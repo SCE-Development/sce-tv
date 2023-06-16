@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="app.js"></script>
+    <link rel="stylesheet" href="index.css">
+    <title>Burger</title>
+</head>
+<script>
+    async function Play(e, url) {
+        e.preventDefault();
+        const response = await fetch(`http://localhost:5001/play?url=${url}`, {
+            method: "POST",
+        });
+        const json = await response.json();
+        console.log(json["detail"]);
+        if (json["detail"] === "Success") {
+            document.getElementById("play").style.visibility = "hidden";
+            document.getElementById("stop").style.visibility = "visible";
+            document.getElementById("title").style.visibility = "visible";
+            document.getElementById("thumbnail").style.visibility = "visible";
+            fetch("http://localhost:5001/current").then((response)=>response.json()).then((json)=> {
+                                                                                            document.getElementById('title').innerHTML=json["title"];
+                                                                                            document.getElementById('thumbnail').src=json["thumbnail"]
+                                                                                        })
+        }
+        else {
+            alert(json["detail"]);
+        }
+    }
+
+    async function Stop(e) {
+        e.preventDefault();
+        await fetch(`http://localhost:5001/stop`, { method: "POST" });
+        document.getElementById("play").style.visibility="visible";
+        document.getElementById("stop").style.visibility = "hidden";
+        document.getElementById("title").style.visibility = "hidden";
+        document.getElementById("thumbnail").style.visibility = "hidden";
+    }
+
+    async function UpdateStopButtonVisibility(e)
+    {
+        e.preventDefault();
+        const response = await fetch("http://localhost:5001/state");
+        const json = await response.json();
+        const state = json["state"];
+        if (state === "interlude")
+        {
+            document.getElementById("stop").style.visibility="hidden";
+            document.getElementById("title").style.visibility="hidden";
+            document.getElementById("thumbnail").style.visibility="hidden";
+        }
+        else {
+            document.getElementById("play").style.visibility="hidden";
+            fetch("http://localhost:5001/current").then((response)=>response.json()).then((json)=> {
+                                                                                            document.getElementById('title').innerHTML=json["title"];
+                                                                                            document.getElementById('thumbnail').src=json["thumbnail"]
+                                                                                        })
+        }
+    }
+</script>
+<body onload="UpdateStopButtonVisibility(event)">
+    <div style="text-align: center;">
+        <input type="text" id="url" placeholder="PASTE A YOUTUBE LINK FOR EPICNESS">
+        <button type="button" id="play" style="background-color: green;" onclick="Play(event, document.getElementById('url').value)">Play</button>
+        <button type="button" id="stop" style="background-color: red;" onclick="Stop(event)">Stop</button>
+        <h3 id="title" style="font-family: Arial, Helvetica, sans-serif;"></h3>
+        <img id="thumbnail" style="border-style: solid;border-width: 5px;" width="640">
+    </div>
+</body>
+</html>
