@@ -28,39 +28,44 @@ app.add_middleware(
 )
 
 def create_ffmpeg_stream(video_path:str, video_type:State):
-    command = [ 'ffmpeg', '-re', '-i', video_path, '-vf', 'scale=640:360', 
-                '-c:v', 'libx264', '-preset', 'veryfast', '-tune', 'zerolatency', 
-                '-c:a', 'aac', '-ar', '44100', '-f', 'flv', 'rtmp://localhost:1935/live/mystream' ]
-    if video_type is State.INTERLUDE: 
-        command[2:2] = ['-stream_loop', '-1']
-    process_dict[video_type] = subprocess.Popen(
-        command, 
-        stdout=subprocess.DEVNULL, 
-        stdin=subprocess.DEVNULL, 
-        stderr=subprocess.DEVNULL
-    )
+    # Check if interlude video file exists
+    if not os.path.exists(video_path):
+        process_dict[video_type] = None
+    else:
+        command = [ 'ffmpeg', '-re', '-i', video_path, '-vf', f'scale=640:360', 
+                    '-c:v', 'libx264', '-preset', 'veryfast', '-tune', 'zerolatency', 
+                    '-c:a', 'aac', '-ar', '44100', '-f', 'flv', 'rtmp://localhost:1935/live/mystream' ]
+        # Loop the interlude stream
+        if video_type is State.INTERLUDE: 
+            command[2:2] = ['-stream_loop', '-1']
+        process_dict[video_type] = subprocess.Popen(
+            command, 
+            stdout=subprocess.DEVNULL, 
+            stdin=subprocess.DEVNULL, 
+            stderr=subprocess.DEVNULL
+        )
 
 def download_and_play(url:str):
-    # Download video
     interlude_process = process_dict.pop(State.INTERLUDE)
+    # Download video
     video = YouTube(url)
     video = video.streams.filter(
-        resolution="360p",
-        progressive=True,
-    ).order_by("resolution").desc().first()
+                    resolution="360p",
+                    progressive=True,
+                  ).order_by("resolution").desc().first()
     video_to_play = video.default_filename
     # Download video is not already downloaded
     if (video_to_play not in os.listdir("./videos")):
         video.download("./videos/")
     # Stop interlude
-    interlude_process.terminate()
+    if interlude_process is not None:
+        interlude_process.terminate() 
     # Start streaming video
     create_ffmpeg_stream(f'./videos/{video_to_play}', State.PLAYING)
     process_dict[State.PLAYING].wait()
     process_dict.pop(State.PLAYING)
     # Once video is finished playing (or stopped early), restart interlude
     create_ffmpeg_stream('./interlude.mp4', State.INTERLUDE)
-
 
 
 # Ensure video folder exists
@@ -76,9 +81,7 @@ async def root():
 @app.get("/state")
 async def state():
     if State.INTERLUDE in process_dict:
-        return  { 
-                    "state": State.INTERLUDE 
-                } 
+        return { "state": State.INTERLUDE }
     else:
         return  {
                     "state": State.PLAYING,
@@ -88,27 +91,28 @@ async def state():
 @app.post("/play")
 async def play(url: str):
     # Check if video is already playing
-    if State.INTERLUDE in process_dict:
-        # Start thread to download video, stream it, and provide a response
-        try:
-            video = YouTube(url)
-            # Check for age restriction/video availability
-            video.bypass_age_gate()
-            video.check_availability()
-            current_video_dict["title"] = video.title
-            current_video_dict["thumbnail"] = video.thumbnail_url 
-            threading.Thread(target=download_and_play, args=(url,)).start()
-            return { "detail": "Success" }
-        # If download is unsuccessful, give response and reason
-        except pytube.exceptions.AgeRestrictedError:
-            raise HTTPException(status_code=400, detail="This video is age restricted :(")
-        except pytube.exceptions.VideoUnavailable:
-            raise HTTPException(status_code=404, detail="This video is unavailable :(")
-        except pytube.exceptions.RegexMatchError:
-            raise HTTPException(status_code=400, detail="That's not a YouTube link buddy ...")
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
-    return { "detail": "please wait for the current video to end, then make the request" }
+    if State.PLAYING in process_dict:
+        raise HTTPException(status_code=409, detail="please wait for the current video to end, then make the request")
+        
+    # Start thread to download video, stream it, and provide a response
+    try:
+        video = YouTube(url)
+        # Check for age restriction/video availability
+        video.bypass_age_gate()
+        video.check_availability()
+        current_video_dict["title"] = video.title
+        current_video_dict["thumbnail"] = video.thumbnail_url 
+        threading.Thread(target=download_and_play, args=(url,)).start()
+        return { "detail": "Success" }
+    # If download is unsuccessful, give response and reason
+    except pytube.exceptions.AgeRestrictedError:
+        raise HTTPException(status_code=400, detail="This video is age restricted :(")
+    except pytube.exceptions.VideoUnavailable:
+        raise HTTPException(status_code=404, detail="This video is unavailable :(")
+    except pytube.exceptions.RegexMatchError:
+        raise HTTPException(status_code=400, detail="That's not a YouTube link buddy ...")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
     
 @app.post("/stop")
 async def stop():
