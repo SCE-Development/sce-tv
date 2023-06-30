@@ -17,6 +17,7 @@ class State(enum.Enum):
 app = FastAPI()
 process_dict = {}
 current_video_dict = {}
+interlude_lock = threading.Lock()
 
 # Enable CORS
 app.add_middleware(
@@ -44,8 +45,13 @@ def create_ffmpeg_stream(video_path:str, video_type:State):
             stdin=subprocess.DEVNULL, 
             stderr=subprocess.DEVNULL
         )
+    
+def handle_interlude():
+    while True:
+        interlude_lock.acquire()
+        create_ffmpeg_stream('./interlude.mp4', State.INTERLUDE)
 
-def download_and_play(url:str):
+def handle_play(url:str):
     interlude_process = process_dict.pop(State.INTERLUDE)
     # Download video
     video = YouTube(url)
@@ -65,14 +71,14 @@ def download_and_play(url:str):
     process_dict[State.PLAYING].wait()
     process_dict.pop(State.PLAYING)
     # Once video is finished playing (or stopped early), restart interlude
-    create_ffmpeg_stream('./interlude.mp4', State.INTERLUDE)
+    interlude_lock.release()
 
 
 # Ensure video folder exists
 if not os.path.exists("./videos"):
    os.makedirs("./videos")
 # Start up interlude by default
-create_ffmpeg_stream('./interlude.mp4', State.INTERLUDE)
+threading.Thread(target=handle_interlude).start()
 
 @app.get("/")
 async def root():
@@ -102,7 +108,7 @@ async def play(url: str):
         video.check_availability()
         current_video_dict["title"] = video.title
         current_video_dict["thumbnail"] = video.thumbnail_url 
-        threading.Thread(target=download_and_play, args=(url,)).start()
+        threading.Thread(target=handle_play, args=(url,)).start()
         return { "detail": "Success" }
     # If download is unsuccessful, give response and reason
     except pytube.exceptions.AgeRestrictedError:
