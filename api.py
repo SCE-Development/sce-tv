@@ -2,6 +2,8 @@ import os
 import threading
 import enum
 import subprocess
+import argparse
+import uvicorn
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -28,28 +30,29 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-def create_ffmpeg_stream(video_path:str, video_type:State):
-    # Check if interlude video file exists
-    if not os.path.exists(video_path):
-        process_dict[video_type] = None
-    else:
-        command = [ 'ffmpeg', '-re', '-i', video_path, '-vf', f'scale=640:360', 
-                    '-c:v', 'libx264', '-preset', 'veryfast', '-tune', 'zerolatency', 
-                    '-c:a', 'aac', '-ar', '44100', '-f', 'flv', 'rtmp://localhost:1935/live/mystream' ]
-        # Loop the interlude stream
-        if video_type is State.INTERLUDE: 
-            command[2:2] = ['-stream_loop', '-1']
-        process_dict[video_type] = subprocess.Popen(
-            command, 
-            stdout=subprocess.DEVNULL, 
-            stdin=subprocess.DEVNULL, 
-            stderr=subprocess.DEVNULL
-        )
+def create_ffmpeg_stream(video_path:str, video_type:State, loop=False):
+    command = [ 'ffmpeg', '-re', '-i', video_path, '-vf', f'scale=640:360', 
+                '-c:v', 'libx264', '-preset', 'veryfast', '-tune', 'zerolatency', 
+                '-c:a', 'aac', '-ar', '44100', '-f', 'flv', 'rtmp://localhost:1935/live/mystream' ]
+    # Loop the interlude stream
+    if loop: 
+        command[2:2] = ['-stream_loop', '-1']
+    process_dict[video_type] = subprocess.Popen(
+        command, 
+        stdout=subprocess.DEVNULL, 
+        stdin=subprocess.DEVNULL, 
+        stderr=subprocess.DEVNULL
+    )
     
 def handle_interlude():
+    interlude_exists = get_args().interlude is None or not os.path.exists(get_args().interlude)
     while True:
         interlude_lock.acquire()
-        create_ffmpeg_stream('./interlude.mp4', State.INTERLUDE)
+        # Check if interlude video file exists:
+        if interlude_exists:
+            process_dict[State.INTERLUDE] = None
+        else:
+            create_ffmpeg_stream(get_args().interlude, State.INTERLUDE, True)
 
 def handle_play(url:str):
     interlude_process = process_dict.pop(State.INTERLUDE)
@@ -72,6 +75,25 @@ def handle_play(url:str):
     process_dict.pop(State.PLAYING)
     # Once video is finished playing (or stopped early), restart interlude
     interlude_lock.release()
+
+def get_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--interlude",
+        help="file path to interlude file",
+    )
+    parser.add_argument(
+        "--host",
+        help="ip address to listen for requests on, i.e. 0.0.0.0",
+        default='0.0.0.0',
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        help="port for the server to listen on, defaults to 5001",
+        default=5001
+    )
+    return parser.parse_args()
 
 
 # Ensure video folder exists
@@ -128,3 +150,12 @@ async def stop():
         process_dict[State.PLAYING].terminate()
     
 
+if __name__ == "__main__":
+    args = get_args()
+    # 1. in this if statement, start the interlude thread only if
+    # interlude file is specified
+    # 2. remove the interlude check logic in start_ffmpeg_stream
+    # 3. create a new branch, make a commit thats titled nicely, push and open a pr
+
+    # 4. dm evan when done, i will teach you logging (if you time)
+    uvicorn.run(app, host=args.host, port=args.port)
