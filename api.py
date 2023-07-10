@@ -2,8 +2,9 @@ import os
 import threading
 import enum
 import subprocess
-import argparse
 import uvicorn
+
+from args import get_args
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -76,24 +77,6 @@ def handle_play(url:str):
     # Once video is finished playing (or stopped early), restart interlude
     interlude_lock.release()
 
-def get_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--interlude",
-        help="file path to interlude file",
-    )
-    parser.add_argument(
-        "--host",
-        help="ip address to listen for requests on, i.e. 0.0.0.0",
-        default='0.0.0.0',
-    )
-    parser.add_argument(
-        "--port",
-        type=int,
-        help="port for the server to listen on, defaults to 5001",
-        default=5001
-    )
-    return parser.parse_args()
 
 
 # Ensure video folder exists
@@ -152,10 +135,5 @@ async def stop():
 
 if __name__ == "__main__":
     args = get_args()
-    # 1. in this if statement, start the interlude thread only if
-    # interlude file is specified
-    # 2. remove the interlude check logic in start_ffmpeg_stream
-    # 3. create a new branch, make a commit thats titled nicely, push and open a pr
-
-    # 4. dm evan when done, i will teach you logging (if you time)
+    
     uvicorn.run(app, host=args.host, port=args.port)
