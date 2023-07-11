@@ -2,6 +2,9 @@ import os
 import threading
 import enum
 import subprocess
+import uvicorn
+
+from args import get_args
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,6 +21,7 @@ app = FastAPI()
 process_dict = {}
 current_video_dict = {}
 interlude_lock = threading.Lock()
+args = get_args()
 
 # Enable CORS
 app.add_middleware(
@@ -28,31 +32,31 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-def create_ffmpeg_stream(video_path:str, video_type:State):
-    # Check if interlude video file exists
-    if not os.path.exists(video_path):
-        process_dict[video_type] = None
-    else:
-        command = [ 'ffmpeg', '-re', '-i', video_path, '-vf', f'scale=640:360', 
-                    '-c:v', 'libx264', '-preset', 'veryfast', '-tune', 'zerolatency', 
-                    '-c:a', 'aac', '-ar', '44100', '-f', 'flv', 'rtmp://localhost:1935/live/mystream' ]
-        # Loop the interlude stream
-        if video_type is State.INTERLUDE: 
-            command[2:2] = ['-stream_loop', '-1']
-        process_dict[video_type] = subprocess.Popen(
-            command, 
-            stdout=subprocess.DEVNULL, 
-            stdin=subprocess.DEVNULL, 
-            stderr=subprocess.DEVNULL
-        )
+def create_ffmpeg_stream(video_path:str, video_type:State, loop=False):
+    command = [ 'ffmpeg', '-re', '-i', video_path, '-vf', f'scale=640:360', 
+                '-c:v', 'libx264', '-preset', 'veryfast', '-tune', 'zerolatency', 
+                '-c:a', 'aac', '-ar', '44100', '-f', 'flv', 'rtmp://localhost:1935/live/mystream' ]
+    # Loop the interlude stream
+    if loop: 
+        command[2:2] = ['-stream_loop', '-1']
+    process_dict[video_type] = subprocess.Popen(
+        command, 
+        stdout=subprocess.DEVNULL, 
+        stdin=subprocess.DEVNULL, 
+        stderr=subprocess.DEVNULL
+    )
     
 def handle_interlude():
+    interlude_exists = args.interlude is None or not os.path.exists(args.interlude)
     while True:
         interlude_lock.acquire()
-        create_ffmpeg_stream('./interlude.mp4', State.INTERLUDE)
+        # Check if interlude video file exists:
+        if interlude_exists:
+            process_dict[State.INTERLUDE] = None
+        else:
+            create_ffmpeg_stream(args.interlude, State.INTERLUDE, True)
 
 def handle_play(url:str):
-    interlude_process = process_dict.pop(State.INTERLUDE)
     # Download video
     video = YouTube(url)
     video = video.streams.filter(
@@ -64,8 +68,9 @@ def handle_play(url:str):
     if (video_to_play not in os.listdir("./videos")):
         video.download("./videos/")
     # Stop interlude
-    if interlude_process is not None:
-        interlude_process.terminate() 
+    if State.INTERLUDE in process_dict:
+        interlude_process = process_dict.pop(State.INTERLUDE)
+        interlude_process.terminate()
     # Start streaming video
     create_ffmpeg_stream(f'./videos/{video_to_play}', State.PLAYING)
     process_dict[State.PLAYING].wait()
@@ -74,11 +79,13 @@ def handle_play(url:str):
     interlude_lock.release()
 
 
+
 # Ensure video folder exists
 if not os.path.exists("./videos"):
    os.makedirs("./videos")
 # Start up interlude by default
-threading.Thread(target=handle_interlude).start()
+if args.interlude:
+    threading.Thread(target=handle_interlude).start()
 
 @app.get("/")
 async def root():
@@ -128,3 +135,6 @@ async def stop():
         process_dict[State.PLAYING].terminate()
     
 
+if __name__ == "__main__":
+    
+    uvicorn.run(app, host=args.host, port=args.port)
