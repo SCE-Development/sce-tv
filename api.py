@@ -21,6 +21,7 @@ app = FastAPI()
 process_dict = {}
 current_video_dict = {}
 interlude_lock = threading.Lock()
+args = get_args()
 
 # Enable CORS
 app.add_middleware(
@@ -46,14 +47,14 @@ def create_ffmpeg_stream(video_path:str, video_type:State, loop=False):
     )
     
 def handle_interlude():
-    interlude_exists = get_args().interlude is None or not os.path.exists(get_args().interlude)
+    interlude_exists = args.interlude is None or not os.path.exists(args.interlude)
     while True:
         interlude_lock.acquire()
         # Check if interlude video file exists:
         if interlude_exists:
             process_dict[State.INTERLUDE] = None
         else:
-            create_ffmpeg_stream(get_args().interlude, State.INTERLUDE, True)
+            create_ffmpeg_stream(args.interlude, State.INTERLUDE, True)
 
 def handle_play(url:str):
     interlude_process = process_dict.pop(State.INTERLUDE)
@@ -134,6 +135,5 @@ async def stop():
     
 
 if __name__ == "__main__":
-    args = get_args()
     
     uvicorn.run(app, host=args.host, port=args.port)
