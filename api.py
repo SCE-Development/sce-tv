@@ -57,7 +57,6 @@ def handle_interlude():
             create_ffmpeg_stream(args.interlude, State.INTERLUDE, True)
 
 def handle_play(url:str):
-    interlude_process = process_dict.pop(State.INTERLUDE)
     # Download video
     video = YouTube(url)
     video = video.streams.filter(
@@ -69,8 +68,9 @@ def handle_play(url:str):
     if (video_to_play not in os.listdir("./videos")):
         video.download("./videos/")
     # Stop interlude
-    if interlude_process is not None:
-        interlude_process.terminate() 
+    if State.INTERLUDE in process_dict:
+        interlude_process = process_dict.pop(State.INTERLUDE)
+        interlude_process.terminate()
     # Start streaming video
     create_ffmpeg_stream(f'./videos/{video_to_play}', State.PLAYING)
     process_dict[State.PLAYING].wait()
@@ -84,7 +84,8 @@ def handle_play(url:str):
 if not os.path.exists("./videos"):
    os.makedirs("./videos")
 # Start up interlude by default
-threading.Thread(target=handle_interlude).start()
+if args.interlude:
+    threading.Thread(target=handle_interlude).start()
 
 @app.get("/")
 async def root():
