@@ -50,22 +50,22 @@ def create_ffmpeg_stream(video_path:str, video_type:State, loop=False):
     )
     
 def handle_interlude():
-    interlude_exists = args.interlude is None or not os.path.exists(args.interlude)
+    interlude_exists = args.interlude is not None or os.path.exists(args.interlude)
     while True:
         interlude_lock.acquire()
         # Check if interlude video file exists:
         if interlude_exists:
-            process_dict[State.INTERLUDE] = None
-        else:
             create_ffmpeg_stream(args.interlude, State.INTERLUDE, True)
+        else:
+            process_dict[State.INTERLUDE] = None
 
 def handle_play(url:str):
+    # Update process state
+    interlude_process = process_dict.pop(State.INTERLUDE)
     # Add video to cache
     video_cache.add(url)
     # Stop interlude
-    if State.INTERLUDE in process_dict:
-        interlude_process = process_dict.pop(State.INTERLUDE)
-        interlude_process.terminate()
+    interlude_process.terminate()
     # Start streaming video
     create_ffmpeg_stream(video_cache.find(Cache.get_video_id(url)), State.PLAYING)
     process_dict[State.PLAYING].wait()
@@ -101,6 +101,7 @@ async def play(url: str):
     # Check if video is already playing
     if State.PLAYING in process_dict:
         raise HTTPException(status_code=409, detail="please wait for the current video to end, then make the request")
+        
     # Start thread to download video, stream it, and provide a response
     try:
         video = YouTube(url)
@@ -125,7 +126,12 @@ async def stop():
         # Stop the video playing subprocess
         process_dict[State.PLAYING].terminate()
     
+@app.on_event("shutdown")
+def signal_handler():
+    video_cache.clear()
 
 if __name__ == "__main__":
     
     uvicorn.run(app, host=args.host, port=args.port)
+
+# python api.py --interlude interlude.mp4 --videopath ./videos --host 127.0.0.1
