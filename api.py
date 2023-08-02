@@ -50,14 +50,9 @@ def create_ffmpeg_stream(video_path:str, video_type:State, loop=False):
     )
     
 def handle_interlude():
-    interlude_exists = args.interlude is not None or os.path.exists(args.interlude)
     while True:
         interlude_lock.acquire()
-        # Check if interlude video file exists:
-        if interlude_exists:
-            create_ffmpeg_stream(args.interlude, State.INTERLUDE, True)
-        else:
-            process_dict[State.INTERLUDE] = None
+        create_ffmpeg_stream(args.interlude, State.INTERLUDE, True)
 
 def handle_play(url:str):
     # Update process state
@@ -133,5 +128,3 @@ def signal_handler():
 if __name__ == "__main__":
     
     uvicorn.run(app, host=args.host, port=args.port)
-
-# python api.py --interlude interlude.mp4 --videopath ./videos --host 127.0.0.1
