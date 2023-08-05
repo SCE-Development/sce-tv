@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="index.css">
+    <title>Burger</title>
+</head>
+<script>
+    async function Play(e, url) {
+        e.preventDefault();
+        const response = await fetch(`http://localhost:5001/play?url=${url}`, {
+            method: "POST",
+        });
+        const res_json = await response.json();
+        
+        if (res_json["detail"] === "Success") {
+            fetch("http://localhost:5001/state").then((state_response) => state_response.json()).then((state_json) => {
+                document.getElementById("interlude").style.visibility = "hidden";
+                document.getElementById("playing").style.visibility = "visible";
+                document.getElementById('title').innerHTML = state_json["nowPlaying"]["title"];
+                document.getElementById('thumbnail').src = state_json["nowPlaying"]["thumbnail"];
+            })
+        }
+        else {
+            alert(res_json["detail"]);
+        }
+    }
+
+    async function Stop(e) {
+        e.preventDefault();
+        await fetch(`http://localhost:5001/stop`, { method: "POST" });
+        document.getElementById("interlude").style.visibility = "visible";
+        document.getElementById("playing").style.visibility = "hidden";
+    }
+
+    fetch("http://localhost:5001/state").then((response) => response.json()).then((json) => {
+        const state = json["state"];
+        if (state === "interlude") {
+            document.getElementById("playing").style.visibility = "hidden";
+        }
+        else {
+            document.getElementById("interlude").style.visibility = "hidden";
+            document.getElementById('title').innerHTML = json["nowPlaying"]["title"];
+            document.getElementById('thumbnail').src = json["nowPlaying"]["thumbnail"]
+        }
+    })
+</script>
+
+<body>
+    <div style="text-align: center;">
+        <div id="interlude">
+            <input type="text" id="url" placeholder="PASTE A YOUTUBE LINK FOR EPICNESS">
+            <select id="resolution">
+                <option value="144">144p</option>
+                <option value="240">240p</option>
+                <option value="360">360p</option>
+                <option value="720">720p</option>
+                <option value="1080">1080p</option>
+            </select>
+            <button type="button" id="play" style="background-color: green;"
+                onclick="Play(event, document.getElementById('url').value)">Play</button>
+        </div>
+
+        <div id="playing">
+            <button type="button" id="stop" style="background-color:red;" onclick="Stop(event)">Stop</button>
+            <h2>NOW PLAYING:</h2>
+            <h3 id="title"></h3>
+            <img id="thumbnail" style="border-style: solid;border-width: 3px;border-radius: 25px;" width="640">
+        </div>
+    </div>
+</body>
+
+</html>
