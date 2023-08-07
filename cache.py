@@ -14,9 +14,6 @@ class Cache():
 
     def add(self, url:str):
         video = YouTube(url)
-        # Check for age restriction/video availability
-        video.bypass_age_gate()
-        video.check_availability()
         # Download video of set resolution
         video = video.streams.filter(
                         resolution="360p",

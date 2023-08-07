@@ -100,6 +100,9 @@ async def play(url: str):
     # Start thread to download video, stream it, and provide a response
     try:
         video = YouTube(url)
+        # Check for age restriction/video availability
+        video.bypass_age_gate()
+        video.check_availability()
         current_video_dict["title"] = video.title
         current_video_dict["thumbnail"] = video.thumbnail_url 
         threading.Thread(target=handle_play, args=(url,)).start()
