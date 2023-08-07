@@ -12,6 +12,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pytube import YouTube
 import pytube.exceptions 
 
+from cache import Cache
+
 
 class State(enum.Enum):
     INTERLUDE = "interlude"
@@ -22,6 +24,7 @@ process_dict = {}
 current_video_dict = {}
 interlude_lock = threading.Lock()
 args = get_args()
+video_cache = Cache(file_path=args.videopath)
 
 # Enable CORS
 app.add_middleware(
@@ -47,32 +50,19 @@ def create_ffmpeg_stream(video_path:str, video_type:State, loop=False):
     )
     
 def handle_interlude():
-    interlude_exists = args.interlude is None or not os.path.exists(args.interlude)
     while True:
         interlude_lock.acquire()
-        # Check if interlude video file exists:
-        if interlude_exists:
-            process_dict[State.INTERLUDE] = None
-        else:
-            create_ffmpeg_stream(args.interlude, State.INTERLUDE, True)
+        create_ffmpeg_stream(args.interlude, State.INTERLUDE, True)
 
 def handle_play(url:str):
-    # Download video
-    video = YouTube(url)
-    video = video.streams.filter(
-                    resolution="360p",
-                    progressive=True,
-                  ).order_by("resolution").desc().first()
-    video_to_play = video.default_filename
-    # Download video is not already downloaded
-    if (video_to_play not in os.listdir("./videos")):
-        video.download("./videos/")
+    # Update process state
+    interlude_process = process_dict.pop(State.INTERLUDE)
+    # Add video to cache
+    video_cache.add(url)
     # Stop interlude
-    if State.INTERLUDE in process_dict:
-        interlude_process = process_dict.pop(State.INTERLUDE)
-        interlude_process.terminate()
+    interlude_process.terminate()
     # Start streaming video
-    create_ffmpeg_stream(f'./videos/{video_to_play}', State.PLAYING)
+    create_ffmpeg_stream(video_cache.find(Cache.get_video_id(url)), State.PLAYING)
     process_dict[State.PLAYING].wait()
     process_dict.pop(State.PLAYING)
     # Once video is finished playing (or stopped early), restart interlude
@@ -134,6 +124,9 @@ async def stop():
         # Stop the video playing subprocess
         process_dict[State.PLAYING].terminate()
     
+@app.on_event("shutdown")
+def signal_handler():
+    video_cache.clear()
 
 if __name__ == "__main__":
     

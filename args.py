@@ -3,6 +3,11 @@ import argparse
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
+        "--videopath",
+        help="path for video cache to be stored",
+        default="./"
+    )
+    parser.add_argument(
         "--interlude",
         help="file path to interlude file",
     )
