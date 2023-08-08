@@ -1,0 +1,22 @@
+version: '2'
+services:
+  streaming-server:
+    image: 'illuspas/node-media-server'
+    container_name: nms
+    ports:
+      - '1935:1935'
+      - '8000:8000'
+  gyat-server:
+    container_name: gyat_server
+    ports:
+      - '80:5001'
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    restart: 'on-failure'
+    command:
+      - --interlude=/tmp/videos/interlude.mp4
+      - --videopath=/tmp/videos
+      - --rtmp-stream-url=rtmp://nms:1935/live/mystream
+    volumes:
+      - ./videos:/tmp/videos:rw

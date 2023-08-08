@@ -22,4 +22,9 @@ def get_args():
         help="port for the server to listen on, defaults to 5001",
         default=5001
     )
+    parser.add_argument(
+        "--rtmp-stream-url",
+        required=True,
+        help="the location to stream downloaded files to, i.e. rtmp://localhost/stream/live"
+    )
     return parser.parse_args()
