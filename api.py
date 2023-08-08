@@ -11,14 +11,20 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from pytube import YouTube
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 4b5f32e (Update api.py)
 import pytube.exceptions 
 
 from cache import Cache
 
+<<<<<<< HEAD
 =======
 from pytube.exceptions import AgeRestrictedError, VideoUnavailable, RegexMatchError
 from time import sleep
 >>>>>>> f285529 (frontend created)
+=======
+>>>>>>> 4b5f32e (Update api.py)
 
 class State(enum.Enum):
     INTERLUDE = "interlude"
@@ -26,11 +32,15 @@ class State(enum.Enum):
 
 app = FastAPI()
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 4b5f32e (Update api.py)
 process_dict = {}
 current_video_dict = {}
 interlude_lock = threading.Lock()
 args = get_args()
 video_cache = Cache(file_path=args.videopath)
+<<<<<<< HEAD
 =======
 current_state = State.INTERLUDE
 interlude_command = ['ffmpeg', '-re', '-stream_loop', '-1', 
@@ -47,6 +57,8 @@ current_video_data = ('','')
 if not os.path.exists("./videos"):
    os.makedirs("./videos")
 >>>>>>> f285529 (frontend created)
+=======
+>>>>>>> 4b5f32e (Update api.py)
 
 # Enable CORS
 app.add_middleware(
@@ -114,6 +126,7 @@ async def state():
                 }
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 @app.post("/play")
 async def play(url: str):
     # Check if video is already playing
@@ -147,9 +160,12 @@ async def current():
 
 
 @app.post("/play/")
+=======
+@app.post("/play")
+>>>>>>> 4b5f32e (Update api.py)
 async def play(url: str):
-    global current_state, interlude_process, current_video_data
     # Check if video is already playing
+<<<<<<< HEAD
     if current_state is State.INTERLUDE:
         # Start thread to download video, stream it, and provide a response
         try:
@@ -168,6 +184,30 @@ async def play(url: str):
         except Exception as e:
             return { "detail": str(e) }
 >>>>>>> f285529 (frontend created)
+=======
+    if State.PLAYING in process_dict:
+        raise HTTPException(status_code=409, detail="please wait for the current video to end, then make the request")
+        
+    # Start thread to download video, stream it, and provide a response
+    try:
+        video = YouTube(url)
+        # Check for age restriction/video availability
+        video.bypass_age_gate()
+        video.check_availability()
+        current_video_dict["title"] = video.title
+        current_video_dict["thumbnail"] = video.thumbnail_url 
+        threading.Thread(target=handle_play, args=(url,)).start()
+        return { "detail": "Success" }
+    # If download is unsuccessful, give response and reason
+    except pytube.exceptions.AgeRestrictedError:
+        raise HTTPException(status_code=400, detail="This video is age restricted :(")
+    except pytube.exceptions.VideoUnavailable:
+        raise HTTPException(status_code=404, detail="This video is unavailable :(")
+    except pytube.exceptions.RegexMatchError:
+        raise HTTPException(status_code=400, detail="That's not a YouTube link buddy ...")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+>>>>>>> 4b5f32e (Update api.py)
     
 @app.post("/stop")
 async def stop():
@@ -180,6 +220,7 @@ async def stop():
 def signal_handler():
     video_cache.clear()
 
+<<<<<<< HEAD
 <<<<<<< HEAD
 if __name__ == "__main__":
     
@@ -210,3 +251,8 @@ def downloadAndPlay(url:str):
     current_state = State.INTERLUDE
     interlude_process = subprocess.Popen(interlude_command)
 >>>>>>> f285529 (frontend created)
+=======
+if __name__ == "__main__":
+    
+    uvicorn.run(app, host=args.host, port=args.port)
+>>>>>>> 4b5f32e (Update api.py)
