@@ -2,16 +2,16 @@ import os
 import threading
 import enum
 import subprocess
+from urllib.parse import unquote
 import uvicorn
-
-from args import get_args
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-
+from fastapi.staticfiles import StaticFiles
 from pytube import YouTube
 import pytube.exceptions 
 
+from args import get_args
 from cache import Cache
 
 
@@ -38,7 +38,7 @@ app.add_middleware(
 def create_ffmpeg_stream(video_path:str, video_type:State, loop=False):
     command = [ 'ffmpeg', '-re', '-i', video_path, '-vf', f'scale=640:360', 
                 '-c:v', 'libx264', '-preset', 'veryfast', '-tune', 'zerolatency', 
-                '-c:a', 'aac', '-ar', '44100', '-f', 'flv', 'rtmp://localhost:1935/live/mystream' ]
+                '-c:a', 'aac', '-ar', '44100', '-f', 'flv', args.rtmp_stream_url ]
     # Loop the interlude stream
     if loop: 
         command[2:2] = ['-stream_loop', '-1']
@@ -77,9 +77,9 @@ if not os.path.exists("./videos"):
 if args.interlude:
     threading.Thread(target=handle_interlude).start()
 
-@app.get("/")
-async def root():
-    return { "message": "Hello World" }
+# @app.get("/")
+# async def root():
+#     return { "message": "Hello World" }
 
 @app.get("/state")
 async def state():
@@ -93,6 +93,7 @@ async def state():
 
 @app.post("/play")
 async def play(url: str):
+    url = unquote(url)
     # Check if video is already playing
     if State.PLAYING in process_dict:
         raise HTTPException(status_code=409, detail="please wait for the current video to end, then make the request")
@@ -129,5 +130,5 @@ def signal_handler():
     video_cache.clear()
 
 if __name__ == "__main__":
-    
+    app.mount("/", StaticFiles(directory="static", html=True), name="static")
     uvicorn.run(app, host=args.host, port=args.port)

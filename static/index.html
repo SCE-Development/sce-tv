@@ -8,15 +8,20 @@
     <title>Burger</title>
 </head>
 <script>
+    let stateURL = new URL("/state", window.location.origin)
+    let stopURL = new URL("/stop", window.location.origin)
+
     async function Play(e, url) {
         e.preventDefault();
-        const response = await fetch(`http://localhost:5001/play?url=${url}`, {
+        let playURL = new URL("/play", window.location.origin)
+        playURL.searchParams.append("url", encodeURIComponent(url))
+        const response = await fetch(playURL.href, {
             method: "POST",
         });
         const res_json = await response.json();
         
         if (res_json["detail"] === "Success") {
-            fetch("http://localhost:5001/state").then((state_response) => state_response.json()).then((state_json) => {
+            fetch(stateURL.href).then((state_response) => state_response.json()).then((state_json) => {
                 document.getElementById("interlude").style.visibility = "hidden";
                 document.getElementById("playing").style.visibility = "visible";
                 document.getElementById('title').innerHTML = state_json["nowPlaying"]["title"];
@@ -30,12 +35,12 @@
 
     async function Stop(e) {
         e.preventDefault();
-        await fetch(`http://localhost:5001/stop`, { method: "POST" });
+        await fetch(stopURL.href, { method: "POST" });
         document.getElementById("interlude").style.visibility = "visible";
         document.getElementById("playing").style.visibility = "hidden";
     }
 
-    fetch("http://localhost:5001/state").then((response) => response.json()).then((json) => {
+    fetch(stateURL.href).then((response) => response.json()).then((json) => {
         const state = json["state"];
         if (state === "interlude") {
             document.getElementById("playing").style.visibility = "hidden";
