@@ -1,5 +1,10 @@
+body {
+    font-family: Arial, Helvetica, sans-serif;
+    background-image: url("lebron.jpg");
+    background-size: cover;
+}
+
 button {
-    display: inline-flex;
     text-align: center;
     color: white;
     border-style: none;
