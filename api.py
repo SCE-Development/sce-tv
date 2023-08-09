@@ -1,10 +1,10 @@
-import os
-import threading
 import enum
+import os
+import re
 import subprocess
+import threading
 from urllib.parse import unquote
 import uvicorn
-import re
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,7 +14,6 @@ import pytube.exceptions
 
 from args import get_args
 from cache import Cache
-
 
 class State(enum.Enum):
     INTERLUDE = "interlude"
@@ -103,6 +102,7 @@ def handle_playlist(playlist_url:str):
         if not video.age_restricted:
             current_video_dict["title"] = video.title
             current_video_dict["thumbnail"] = video.thumbnail_url 
+            # Start downloading next video
             threading.Thread(target=download_next_video_in_list, args=(playlist, i),).start()
             download_and_play_video(video_url)
             process_dict[State.PLAYING].wait()
@@ -126,10 +126,6 @@ if not os.path.exists(args.videopath):
 if args.interlude:
     threading.Thread(target=handle_interlude).start()
 
-# @app.get("/")
-# async def root():
-#     return { "message": "Hello World" }
-
 @app.get("/state")
 async def state():
     if State.INTERLUDE in process_dict:
@@ -143,6 +139,7 @@ async def state():
 @app.post("/play")
 async def play(url: str):
     url = unquote(url)
+    print(url)
     # Check if video is already playing
     if State.PLAYING in process_dict:
         raise HTTPException(status_code=409, detail="Please wait for the current video to end, then make the request")
