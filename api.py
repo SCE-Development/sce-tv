@@ -1,23 +1,27 @@
-import os
-import threading
 import enum
+import os
+import re
 import subprocess
+import threading
 from urllib.parse import unquote
 import uvicorn
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from pytube import YouTube
+from pytube import YouTube, Playlist
 import pytube.exceptions 
 
 from args import get_args
 from cache import Cache
 
-
 class State(enum.Enum):
     INTERLUDE = "interlude"
     PLAYING = "playing"
+
+class UrlType(enum.Enum):
+    VIDEO = "video"
+    PLAYLIST = "playlist"
 
 app = FastAPI()
 process_dict = {}
@@ -55,6 +59,9 @@ def handle_interlude():
         create_ffmpeg_stream(args.interlude, State.INTERLUDE, True)
 
 def handle_play(url:str):
+    video = YouTube(url)
+    current_video_dict["title"] = video.title
+    current_video_dict["thumbnail"] = video.thumbnail_url 
     # Update process state
     interlude_process = process_dict.pop(State.INTERLUDE)
     # Add video to cache
@@ -62,24 +69,62 @@ def handle_play(url:str):
     # Stop interlude
     interlude_process.terminate()
     # Start streaming video
-    create_ffmpeg_stream(video_cache.find(Cache.get_video_id(url)), State.PLAYING)
+    download_and_play_video(url)
     process_dict[State.PLAYING].wait()
     process_dict.pop(State.PLAYING)
     # Once video is finished playing (or stopped early), restart interlude
     interlude_lock.release()
 
+def download_next_video_in_list(playlist, current_index):
+    next_index = current_index + 1 
+    if next_index < len(playlist):
+        video_url = playlist[next_index]
+        if video_cache.find(Cache.get_video_id(video_url)) is None:
+            video_cache.add(video_url)
+
+def download_and_play_video(url):
+    video_path = video_cache.find(Cache.get_video_id(url))
+    if video_path is None:
+        video_cache.add(url)
+        video_path = video_cache.find(Cache.get_video_id(url))
+    create_ffmpeg_stream(video_path, State.PLAYING)
+
+def handle_playlist(playlist_url:str):
+    playlist = Playlist(playlist_url)
+    # Update process state
+    interlude_process = process_dict.pop(State.INTERLUDE)
+    # Stop interlude
+    interlude_process.terminate()
+    for i in range(len(playlist)):
+        video_url = playlist[i]
+        video = YouTube(video_url)
+        # Only play age-unrestricted videos to avoid exceptions
+        if not video.age_restricted:
+            current_video_dict["title"] = video.title
+            current_video_dict["thumbnail"] = video.thumbnail_url 
+            # Start downloading next video
+            threading.Thread(target=download_next_video_in_list, args=(playlist, i),).start()
+            download_and_play_video(video_url)
+            process_dict[State.PLAYING].wait()
+    interlude_lock.release()
+
+def _get_url_type(url:str):
+    try:
+        split_url = re.split(r'/|\?', url)
+        if split_url[3] == "playlist":
+            return UrlType.PLAYLIST
+        else:
+            return UrlType.VIDEO
+    except:
+        raise HTTPException(status_code=400, detail="That is not a valid YouTube link. Double check the url and try again.")
 
 
 # Ensure video folder exists
-if not os.path.exists("./videos"):
-   os.makedirs("./videos")
+if not os.path.exists(args.videopath):
+   os.makedirs(args.videopath)
 # Start up interlude by default
 if args.interlude:
     threading.Thread(target=handle_interlude).start()
-
-# @app.get("/")
-# async def root():
-#     return { "message": "Hello World" }
 
 @app.get("/state")
 async def state():
@@ -94,29 +139,35 @@ async def state():
 @app.post("/play")
 async def play(url: str):
     url = unquote(url)
+    print(url)
     # Check if video is already playing
     if State.PLAYING in process_dict:
-        raise HTTPException(status_code=409, detail="please wait for the current video to end, then make the request")
+        raise HTTPException(status_code=409, detail="Please wait for the current video to end, then make the request")
         
     # Start thread to download video, stream it, and provide a response
     try:
-        video = YouTube(url)
-        # Check for age restriction/video availability
-        video.bypass_age_gate()
-        video.check_availability()
-        current_video_dict["title"] = video.title
-        current_video_dict["thumbnail"] = video.thumbnail_url 
-        threading.Thread(target=handle_play, args=(url,)).start()
+        if _get_url_type(url) == UrlType.VIDEO:
+            video = YouTube(url)
+            # Check for age restriction/video availability
+            video.bypass_age_gate()
+            video.check_availability()
+            threading.Thread(target=handle_play, args=(url,)).start()
+        else:
+            if len(Playlist(url)) == 0:
+                raise Exception("This playlist url is invalid. Playlist may be empty or no longer exists.")
+            threading.Thread(target=handle_playlist, args=(url,)).start()
         return { "detail": "Success" }
+    
     # If download is unsuccessful, give response and reason
     except pytube.exceptions.AgeRestrictedError:
         raise HTTPException(status_code=400, detail="This video is age restricted :(")
-    except pytube.exceptions.VideoUnavailable:
-        raise HTTPException(status_code=404, detail="This video is unavailable :(")
     except pytube.exceptions.RegexMatchError:
         raise HTTPException(status_code=400, detail="That's not a YouTube link buddy ...")
+    except pytube.exceptions.VideoUnavailable:
+        raise HTTPException(status_code=404, detail="This video is unavailable :(")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
     
 @app.post("/stop")
 async def stop():
