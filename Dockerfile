@@ -6,7 +6,7 @@ RUN apt-get update && apt-get install -y ffmpeg git
 
 COPY requirements.txt /service
 
-# Fix Pytube regex errors
+# Fix Pytube regex errors :)
 RUN pip3 install git+https://github.com/joejztang/pytube.git@499268313ada0b971dc5b6718986b27d97731f05
 
 RUN pip3 install -r /service/requirements.txt
