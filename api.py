@@ -62,18 +62,20 @@ def handle_play(url:str):
     video = YouTube(url)
     current_video_dict["title"] = video.title
     current_video_dict["thumbnail"] = video.thumbnail_url 
-    # Update process state
-    interlude_process = process_dict.pop(State.INTERLUDE)
     # Add video to cache
     video_cache.add(url)
-    # Stop interlude
-    interlude_process.terminate()
-    # Start streaming video
+    # Update process state
+    if State.INTERLUDE in process_dict:
+        # Stop interlude
+        interlude_process = process_dict.pop(State.INTERLUDE)
+        interlude_process.terminate()
     download_and_play_video(url)
     process_dict[State.PLAYING].wait()
+    # Start streaming video
     process_dict.pop(State.PLAYING)
     # Once video is finished playing (or stopped early), restart interlude
-    interlude_lock.release()
+    if args.interlude:
+        interlude_lock.release()
 
 def download_next_video_in_list(playlist, current_index):
     next_index = current_index + 1 
@@ -92,7 +94,8 @@ def download_and_play_video(url):
 def handle_playlist(playlist_url:str):
     playlist = Playlist(playlist_url)
     # Update process state
-    interlude_process = process_dict.pop(State.INTERLUDE)
+    if State.INTERLUDE in process_dict:
+        interlude_process = process_dict.pop(State.INTERLUDE)
     # Stop interlude
     interlude_process.terminate()
     for i in range(len(playlist)):
@@ -106,7 +109,8 @@ def handle_playlist(playlist_url:str):
             threading.Thread(target=download_next_video_in_list, args=(playlist, i),).start()
             download_and_play_video(video_url)
             process_dict[State.PLAYING].wait()
-    interlude_lock.release()
+    if args.interlude:
+        interlude_lock.release()
 
 def _get_url_type(url:str):
     try:
