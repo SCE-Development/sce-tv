@@ -8,8 +8,6 @@ services:
       - '8000:8000'
   gyat-server:
     container_name: gyat_server
-    ports:
-      - '42069:5001'
     build:
       context: .
       dockerfile: ./Dockerfile
@@ -20,3 +18,8 @@ services:
       - --rtmp-stream-url=rtmp://nms:1935/live/mystream
     volumes:
       - ./videos:/tmp/videos:rw
+
+networks: 
+  default:
+    external: 
+      name: poweredge

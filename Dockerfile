@@ -13,7 +13,7 @@ RUN pip3 install -r /service/requirements.txt
 
 COPY static/ /service/static/
 
-COPY *.py .
+COPY *.py ./
 
 EXPOSE 5001
 

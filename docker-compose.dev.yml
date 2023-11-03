@@ -1,0 +1,8 @@
+version: '2'
+services:
+  streaming-server:
+    image: 'illuspas/node-media-server'
+    container_name: nms
+    ports:
+      - '1935:1935'
+      - '8000:8000'

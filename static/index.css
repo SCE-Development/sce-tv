@@ -1,4 +1,10 @@
+/* see https://stackoverflow.com/a/6654996 */
+html {
+    height: 100%;
+}
+
 body {
+    min-height: 100%;
     font-family: Arial, Helvetica, sans-serif;
     background-image: url("lebron.jpg");
     background-size: cover;
