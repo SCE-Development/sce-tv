@@ -6,11 +6,12 @@ import threading
 from urllib.parse import unquote
 import uvicorn
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pytube import YouTube, Playlist
 import pytube.exceptions 
+import prometheus_client
 
 from args import get_args
 from cache import Cache
@@ -37,6 +38,12 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+)
+
+# Metrics
+video_count = prometheus_client.Counter(
+    "video_count",
+    "Number of videos played",
 )
 
 def create_ffmpeg_stream(video_path:str, video_type:State, loop=False):
@@ -147,7 +154,7 @@ async def play(url: str):
     # Check if video is already playing
     if State.PLAYING in process_dict:
         raise HTTPException(status_code=409, detail="Please wait for the current video to end, then make the request")
-        
+    
     # Start thread to download video, stream it, and provide a response
     try:
         if _get_url_type(url) == UrlType.VIDEO:
@@ -160,6 +167,8 @@ async def play(url: str):
             if len(Playlist(url)) == 0:
                 raise Exception("This playlist url is invalid. Playlist may be empty or no longer exists.")
             threading.Thread(target=handle_playlist, args=(url,)).start()
+        # Update Metrics
+        video_count.inc(amount=1)
         return { "detail": "Success" }
     
     # If download is unsuccessful, give response and reason
@@ -171,7 +180,6 @@ async def play(url: str):
         raise HTTPException(status_code=404, detail="This video is unavailable :(")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
     
 @app.post("/stop")
 async def stop():
@@ -179,6 +187,13 @@ async def stop():
     if State.PLAYING in process_dict:
         # Stop the video playing subprocess
         process_dict[State.PLAYING].terminate()
+
+@app.get('/metrics')
+def get_metrics():
+    return Response(
+        media_type="text/plain",
+        content=prometheus_client.generate_latest(),
+    )
     
 @app.on_event("shutdown")
 def signal_handler():
