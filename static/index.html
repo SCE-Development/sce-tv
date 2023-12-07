@@ -10,6 +10,7 @@
 <script>
     let stateURL = new URL(window.location.pathname + "state", window.location.origin)
     let stopURL = new URL(window.location.pathname + "stop", window.location.origin)
+    let playButton = document.getElementById("play");
 
     async function Play(e, url) {
         e.preventDefault();
@@ -21,12 +22,12 @@
         const res_json = await response.json();
         
         if (res_json["detail"] === "Success") {
-            fetch(stateURL.href).then((state_response) => state_response.json()).then((state_json) => {
-                document.getElementById("interlude").style.visibility = "hidden";
-                document.getElementById("playing").style.visibility = "visible";
-                document.getElementById('title').innerHTML = state_json["nowPlaying"]["title"];
-                document.getElementById('thumbnail').src = state_json["nowPlaying"]["thumbnail"];
-            })
+            playButton.textContent = "Success!";
+            playButton.disabled = true;
+            setTimeout(() => {
+                playButton.textContent = "Play";
+                playButton.disabled = false;
+            }, 2000);
         }
         else {
             alert(res_json["detail"]);
