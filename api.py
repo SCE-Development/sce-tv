@@ -158,10 +158,6 @@ async def play(url: str):
     # Start thread to download video, stream it, and provide a response
     try:
         if _get_url_type(url) == UrlType.VIDEO:
-            video = YouTube(url)
-            # Check for age restriction/video availability
-            video.bypass_age_gate()
-            video.check_availability()
             threading.Thread(target=handle_play, args=(url,)).start()
         else:
             if len(Playlist(url)) == 0:
