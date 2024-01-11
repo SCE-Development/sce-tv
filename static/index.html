@@ -19,8 +19,7 @@
                 <option value="720">720p</option>
                 <option value="1080">1080p</option>
             </select>
-            <button type="button" id="play" style="background-color: green;"
-                onclick="Play(event, document.getElementById('url').value)">Play</button>
+            <button type="button" id="play" style="background-color: green;">Play</button>
         </div>
 
         <div id="playing">
@@ -34,11 +33,15 @@
         let stateURL = new URL(window.location.pathname + "state", window.location.origin)
         let stopURL = new URL(window.location.pathname + "stop", window.location.origin)
         let playButton = document.getElementById("play");
-    
-        async function Play(e, url) {
+        playButton.addEventListener("click", Play);
+   
+        async function Play(e) {
             e.preventDefault();
-            let playURL = new URL(window.location.pathname + "/play", window.location.origin)
+            const url = document.getElementById('url').value;
+            let playURL = new URL(window.location.pathname + "play", window.location.origin)
+
             playURL.searchParams.append("url", encodeURIComponent(url))
+
             const response = await fetch(playURL.href, {
                 method: "POST",
             });
@@ -63,7 +66,6 @@
             document.getElementById("interlude").style.visibility = "visible";
             document.getElementById("playing").style.visibility = "hidden";
         }
-    
         fetch(stateURL.href).then((response) => response.json()).then((json) => {
             const state = json["state"];
             if (state === "interlude") {
