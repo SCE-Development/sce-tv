@@ -20,13 +20,16 @@ class Cache():
                         resolution="360p",
                         progressive=True,
                     ).order_by("resolution").desc().first()
+        video_file_name = video.default_filename
         UUID = uuid.uuid4()
         theuuid = str(UUID)
-        if (theuuid not in os.listdir(self.file_path)):
-            video.download(self.file_path,filename=theuuid+".mp4")
+        if (video_file_name not in os.listdir(self.file_path)):
+            video.download(self.file_path)
         video_id = self.get_video_id(url)
-        self.video_id_to_path[video_id] = os.path.join(self.file_path, theuuid+".mp4")
-        self.current_size_bytes += os.path.getsize(os.path.join(self.file_path, theuuid +".mp4"))
+        os.rename(video_file_name, theuuid + ".mp4")
+        video_file_name = theuuid + ".mp4"
+        self.video_id_to_path[video_id] = os.path.join(self.file_path, video_file_name)
+        self.current_size_bytes += os.path.getsize(os.path.join(self.file_path, video_file_name))
         self._downsize_cache_to_target_bytes(self.max_size_bytes)
 
     def find(self, video_id:str):
