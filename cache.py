@@ -53,4 +53,3 @@ class Cache():
         parsed_url = urlparse(url)
         video_id = parse_qs(parsed_url.query)['v'][0]
         return(video_id)
-    
