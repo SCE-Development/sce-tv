@@ -1,5 +1,6 @@
 import os
 from collections import OrderedDict
+import uuid
 
 from pytube import YouTube
 
@@ -23,6 +24,8 @@ class Cache():
         if (video_file_name not in os.listdir(self.file_path)):
             video.download(self.file_path)
         video_id = self.get_video_id(url)
+        video_file_name = str(uuid.uuid4()) + ".mp4"
+        os.rename(video.default_filename, video_file_name)
         self.video_id_to_path[video_id] = os.path.join(self.file_path, video_file_name)
         self.current_size_bytes += os.path.getsize(os.path.join(self.file_path, video_file_name))
         self._downsize_cache_to_target_bytes(self.max_size_bytes)
@@ -48,3 +51,4 @@ class Cache():
         parsed_url = urlparse(url)
         video_id = parse_qs(parsed_url.query)['v'][0]
         return(video_id)
+    
