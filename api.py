@@ -92,10 +92,10 @@ def download_next_video_in_list(playlist, current_index):
             video_cache.add(video_url)
 
 def download_and_play_video(url):
-    video_path = video_cache.find(Cache.get_video_id(url))
+    video_path = video_cache.find(Cache.get_video_id(url)).uuid_path
     if video_path is None:
         video_cache.add(url)
-        video_path = video_cache.find(Cache.get_video_id(url))
+        video_path = video_cache.find(Cache.get_video_id(url)).uuid_path
     create_ffmpeg_stream(video_path, State.PLAYING)
 
 def handle_playlist(playlist_url:str):

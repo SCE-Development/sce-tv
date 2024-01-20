@@ -1,10 +1,21 @@
 import os
 from collections import OrderedDict
 import uuid
+from dataclasses import dataclass
 
 from pytube import YouTube
 
 from urllib.parse import urlparse, parse_qs
+
+@dataclass
+class VideoInfo():
+    video_id: str
+    uuid_path: str
+    thumbnail: str
+    title: str
+
+    def __str__(self):
+        return f"VideoInfo(video_id={self.video_id}, uuid_path={self.uuid_path})"
 
 class Cache():
     def __init__(self, file_path:str, max_size_bytes:int=2_000_000_000) -> None:
@@ -26,7 +37,13 @@ class Cache():
         video_id = self.get_video_id(url)
         video_file_name = str(uuid.uuid4()) + ".mp4"
         os.rename(video.default_filename, video_file_name)
-        self.video_id_to_path[video_id] = os.path.join(self.file_path, video_file_name)
+        video_info = VideoInfo(
+            video_id=video_id,
+            uuid_path=os.path.join(self.file_path, video_file_name),
+            thumbnail=YouTube(url).thumbnail_url,
+            title=YouTube(url).title
+        )
+        self.video_id_to_path[video_id] = video_info
         self.current_size_bytes += os.path.getsize(os.path.join(self.file_path, video_file_name))
         self._downsize_cache_to_target_bytes(self.max_size_bytes)
 
