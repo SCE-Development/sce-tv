@@ -39,7 +39,6 @@ class Cache():
             os.path.join(self.file_path, video.default_filename),
             os.path.join(self.file_path, video_file_name),
         )
-        print(url, "lives at", os.path.join(self.file_path, video_file_name))
         video_info = VideoInfo(
             file_path=os.path.join(self.file_path, video_file_name),
             thumbnail=YouTube(url).thumbnail_url,

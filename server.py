@@ -49,7 +49,6 @@ def create_ffmpeg_stream(video_path:str, video_type:State, loop=False):
     # Loop the interlude stream
     if loop: 
         command[2:2] = ['-stream_loop', '-1']
-    print("create_ffmpeg_stream", video_path, process_dict, flush=True)
     process_dict[video_type] = subprocess.Popen(
         command, 
         stdout=subprocess.DEVNULL, 
