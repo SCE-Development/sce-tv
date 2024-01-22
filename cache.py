@@ -32,11 +32,13 @@ class Cache():
                         progressive=True,
                     ).order_by("resolution").desc().first()
         video_file_name = video.default_filename
-        if (video_file_name not in os.listdir(self.file_path)):
-            video.download(self.file_path)
+        video.download(self.file_path)
         video_id = self.get_video_id(url)
         video_file_name = str(uuid.uuid4()) + ".mp4"
-        os.rename(video.default_filename, video_file_name)
+        os.rename(
+            os.path.join(self.file_path, video.default_filename),
+            os.path.join(self.file_path, video_file_name),
+        )
         video_info = VideoInfo(
             file_path=os.path.join(self.file_path, video_file_name),
             thumbnail=YouTube(url).thumbnail_url,
@@ -48,16 +50,16 @@ class Cache():
         self._downsize_cache_to_target_bytes(self.max_size_bytes)
 
     def find(self, video_id:str):
-        if video_id not in self.video_id_to_path:
-            return None
-        self.video_id_to_path.move_to_end(video_id)
-        return self.video_id_to_path[video_id].file_path
+        if video_id in self.video_id_to_path:
+            self.video_id_to_path.move_to_end(video_id)
+            return self.video_id_to_path[video_id].file_path
+        return None
     
     def _downsize_cache_to_target_bytes(self, target_bytes:int):
         self.max_size_bytes = target_bytes
         while self.current_size_bytes > target_bytes:
             removed_video_info = self.video_id_to_path.popitem(last=False)[1]
-            self.current_size_bytes -= removed_video_info.filesize
+            self.current_size_bytes -= removed_video_info.size_bytes
             os.remove(removed_video_info.file_path)
 
     def clear(self):
