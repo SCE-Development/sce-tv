@@ -13,8 +13,9 @@ from pytube import YouTube, Playlist
 import pytube.exceptions 
 import prometheus_client
 
-from args import get_args
-from cache import Cache
+from modules.args import get_args
+from modules.cache import Cache
+from modules.metrics import MetricsHandler
 
 class State(enum.Enum):
     INTERLUDE = "interlude"
@@ -30,6 +31,7 @@ current_video_dict = {}
 interlude_lock = threading.Lock()
 args = get_args()
 video_cache = Cache(file_path=args.videopath)
+metrics_handler = MetricsHandler.instance()
 
 # Enable CORS
 app.add_middleware(
@@ -38,12 +40,6 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-)
-
-# Metrics
-video_count = prometheus_client.Counter(
-    "video_count",
-    "Number of videos played",
 )
 
 def create_ffmpeg_stream(video_path:str, video_type:State, loop=False):
@@ -162,9 +158,9 @@ async def play(url: str):
                 raise Exception("This playlist url is invalid. Playlist may be empty or no longer exists.")
             threading.Thread(target=handle_playlist, args=(url,)).start()
         # Update Metrics
-        video_count.inc(amount=1)
+        MetricsHandler.video_count.inc(amount=1)
         return { "detail": "Success" }
-    
+
     # If download is unsuccessful, give response and reason
     except pytube.exceptions.AgeRestrictedError:
         raise HTTPException(status_code=400, detail="This video is age restricted :(")
@@ -193,6 +189,12 @@ def get_metrics():
 def signal_handler():
     video_cache.clear()
 
+app.mount("/", StaticFiles(directory="static", html=True), name="static")
+print(f"__name__ == {__name__}")
 if __name__ == "__main__":
-    app.mount("/", StaticFiles(directory="static", html=True), name="static")
-    uvicorn.run(app, host=args.host, port=args.port)
+    uvicorn.run(
+        "server:app",
+        host=args.host,
+        port=args.port,
+        reload=True,
+    )

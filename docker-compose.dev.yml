@@ -5,4 +5,19 @@ services:
     container_name: nms
     ports:
       - '1935:1935'
-      - '8000:8000'
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command:
+      - --videopath=/tmp/videos
+      - --rtmp-stream-url=rtmp://nms:1935/live/mystream
+    ports:
+      - 5001:5001
+    volumes:
+      - ./videos:/tmp/videos:rw
+      - ./static:/app/static
+      - ./server.py:/app/server.py
+      - ./modules:/app/modules
+    environment:
+      - WATCHFILES_FORCE_POLLING=true

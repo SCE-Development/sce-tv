@@ -24,9 +24,9 @@ docker-compose -f docker-compose.dev.yml up -d streaming-server
 ```
 - [ ] run the server with
 ```
-python api.py --rtmp-stream-url rtmp://localhost:1935/live/asdf
+docker-compose -f docker-compose.dev.yml up
 ```
 - [ ] visit the webpage at http://localhost:5001/ and add a url from youtube
-- [ ] open the rtmp stream url `rtmp://localhost:1935/live/asdf` in VLC with
-<img width="586" alt="image" src="https://github.com/SCE-Development/sce-tv/assets/36345325/c5ca995d-de85-4449-8f0c-41721f78792a">
+- [ ] open the rtmp stream url `rtmp://localhost/live/mystream` in VLC with
+<img width="591" alt="image" src="https://github.com/SCE-Development/sce-tv/assets/36345325/58238640-f26a-4d7c-87b3-bdf645e30a22">
 - [ ] ensure the stream runs in VLC

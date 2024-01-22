@@ -17,6 +17,9 @@ services:
       - --videopath=/tmp/videos
       - --rtmp-stream-url=rtmp://nms:1935/live/mystream
     volumes:
+      - ./server.py:/app/server.py
+      - ./static/:/app/static/
+      - ./modules:/app/modules
       - ./videos:/tmp/videos:rw
 
 networks: 
