@@ -49,7 +49,7 @@ def create_ffmpeg_stream(video_path:str, video_type:State, loop=False):
     # Loop the interlude stream
     if loop: 
         command[2:2] = ['-stream_loop', '-1']
-    print("create_ffmpeg_stream", video_path, flush=True)
+    print("create_ffmpeg_stream", video_path, process_dict, flush=True)
     process_dict[video_type] = subprocess.Popen(
         command, 
         stdout=subprocess.DEVNULL, 
@@ -69,8 +69,8 @@ def handle_play(url:str):
     # Update process state
     if State.INTERLUDE in process_dict:
         # Stop interlude
-        interlude_process = process_dict.pop(State.INTERLUDE)
-        interlude_process.terminate()
+        process_dict[State.INTERLUDE].terminate()
+        process_dict.pop(State.INTERLUDE)
     download_and_play_video(url)
     process_dict[State.PLAYING].wait()
     # Start streaming video
