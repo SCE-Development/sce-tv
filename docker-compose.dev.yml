@@ -15,9 +15,9 @@ services:
     ports:
       - 5001:5001
     volumes:
-      - ./videos:/tmp/videos:rw
-      - ./static:/app/static
       - ./server.py:/app/server.py
+      - ./static:/app/static
       - ./modules:/app/modules
+      - ./videos:/tmp/videos:rw
     environment:
       - WATCHFILES_FORCE_POLLING=true
