@@ -124,14 +124,6 @@ def _get_url_type(url:str):
     except:
         raise HTTPException(status_code=400, detail="That is not a valid YouTube link. Double check the url and try again.")
 
-
-# Ensure video folder exists
-if not os.path.exists(args.videopath):
-   os.makedirs(args.videopath)
-# Start up interlude by default
-if args.interlude:
-    threading.Thread(target=handle_interlude).start()
-
 @app.get("/state")
 async def state():
     if State.INTERLUDE in process_dict:
@@ -190,6 +182,20 @@ def signal_handler():
     video_cache.clear()
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
+
+# we have a separate __name__ check here due to how FastAPI starts
+# a server. the file is first ran (where __name__ == "__main__")
+# and then calls `uvicorn.run`. the call to run() reruns the file,
+# this time __name__ == "server". the separate __name__ if statement
+# is so a thread starts up the interlude after the server is ready to go
+if __name__ == "server":
+    # Start up interlude by default
+    if args.interlude:
+        threading.Thread(target=handle_interlude).start()
+    # Ensure video folder exists
+    if not os.path.exists(args.videopath):
+        os.makedirs(args.videopath)
+
 if __name__ == "__main__":
     uvicorn.run(
         "server:app",
