@@ -190,7 +190,6 @@ def signal_handler():
     video_cache.clear()
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
-print(f"__name__ == {__name__}")
 if __name__ == "__main__":
     uvicorn.run(
         "server:app",
