@@ -49,6 +49,7 @@ def create_ffmpeg_stream(video_path:str, video_type:State, loop=False):
     # Loop the interlude stream
     if loop: 
         command[2:2] = ['-stream_loop', '-1']
+    print("create_ffmpeg_stream", video_path, flush=True)
     process_dict[video_type] = subprocess.Popen(
         command, 
         stdout=subprocess.DEVNULL, 
@@ -144,7 +145,6 @@ async def state():
 @app.post("/play")
 async def play(url: str):
     url = unquote(url)
-    print(url)
     # Check if video is already playing
     if State.PLAYING in process_dict:
         raise HTTPException(status_code=409, detail="Please wait for the current video to end, then make the request")
