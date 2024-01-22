@@ -69,8 +69,6 @@ def handle_play(url:str):
     video = YouTube(url)
     current_video_dict["title"] = video.title
     current_video_dict["thumbnail"] = video.thumbnail_url 
-    # Add video to cache
-    video_cache.add(url)
     # Update process state
     if State.INTERLUDE in process_dict:
         # Stop interlude
