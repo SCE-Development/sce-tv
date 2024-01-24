@@ -178,6 +178,10 @@ def get_metrics():
     
 @app.on_event("shutdown")
 def signal_handler():
+    for video_type in State:
+        if video_type in process_dict:
+            # Stop the video playing subprocess
+            process_dict[video_type].terminate()
     video_cache.clear()
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")

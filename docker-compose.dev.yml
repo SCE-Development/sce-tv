@@ -12,6 +12,11 @@ services:
     command:
       - --videopath=/tmp/videos
       - --rtmp-stream-url=rtmp://nms:1935/live/mystream
+      # uncomment the below to test an interlude. a file called
+      # interlude.mp4 must exist in this project in the `videos` folder.
+      # there is an unresolved bug where the server doesn't reload
+      # while an interlude is playing.
+      # - --interlude=/tmp/videos/interlude.mp4
     ports:
       - 5001:5001
     volumes:
