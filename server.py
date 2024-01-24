@@ -13,8 +13,9 @@ from pytube import YouTube, Playlist
 import pytube.exceptions 
 import prometheus_client
 
-from args import get_args
-from cache import Cache
+from modules.args import get_args
+from modules.cache import Cache
+from modules.metrics import MetricsHandler
 
 class State(enum.Enum):
     INTERLUDE = "interlude"
@@ -30,6 +31,7 @@ current_video_dict = {}
 interlude_lock = threading.Lock()
 args = get_args()
 video_cache = Cache(file_path=args.videopath)
+metrics_handler = MetricsHandler.instance()
 
 # Enable CORS
 app.add_middleware(
@@ -38,12 +40,6 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-)
-
-# Metrics
-video_count = prometheus_client.Counter(
-    "video_count",
-    "Number of videos played",
 )
 
 def create_ffmpeg_stream(video_path:str, video_type:State, loop=False):
@@ -72,8 +68,8 @@ def handle_play(url:str):
     # Update process state
     if State.INTERLUDE in process_dict:
         # Stop interlude
-        interlude_process = process_dict.pop(State.INTERLUDE)
-        interlude_process.terminate()
+        process_dict[State.INTERLUDE].terminate()
+        process_dict.pop(State.INTERLUDE)
     download_and_play_video(url)
     process_dict[State.PLAYING].wait()
     # Start streaming video
@@ -127,14 +123,6 @@ def _get_url_type(url:str):
     except:
         raise HTTPException(status_code=400, detail="That is not a valid YouTube link. Double check the url and try again.")
 
-
-# Ensure video folder exists
-if not os.path.exists(args.videopath):
-   os.makedirs(args.videopath)
-# Start up interlude by default
-if args.interlude:
-    threading.Thread(target=handle_interlude).start()
-
 @app.get("/state")
 async def state():
     if State.INTERLUDE in process_dict:
@@ -148,7 +136,6 @@ async def state():
 @app.post("/play")
 async def play(url: str):
     url = unquote(url)
-    print(url)
     # Check if video is already playing
     if State.PLAYING in process_dict:
         raise HTTPException(status_code=409, detail="Please wait for the current video to end, then make the request")
@@ -162,9 +149,9 @@ async def play(url: str):
                 raise Exception("This playlist url is invalid. Playlist may be empty or no longer exists.")
             threading.Thread(target=handle_playlist, args=(url,)).start()
         # Update Metrics
-        video_count.inc(amount=1)
+        MetricsHandler.video_count.inc(amount=1)
         return { "detail": "Success" }
-    
+
     # If download is unsuccessful, give response and reason
     except pytube.exceptions.AgeRestrictedError:
         raise HTTPException(status_code=400, detail="This video is age restricted :(")
@@ -191,8 +178,31 @@ def get_metrics():
     
 @app.on_event("shutdown")
 def signal_handler():
+    for video_type in State:
+        if video_type in process_dict:
+            # Stop the video playing subprocess
+            process_dict[video_type].terminate()
     video_cache.clear()
 
+app.mount("/", StaticFiles(directory="static", html=True), name="static")
+
+# we have a separate __name__ check here due to how FastAPI starts
+# a server. the file is first ran (where __name__ == "__main__")
+# and then calls `uvicorn.run`. the call to run() reruns the file,
+# this time __name__ == "server". the separate __name__ if statement
+# is so a thread starts up the interlude after the server is ready to go
+if __name__ == "server":
+    # Start up interlude by default
+    if args.interlude:
+        threading.Thread(target=handle_interlude).start()
+    # Ensure video folder exists
+    if not os.path.exists(args.videopath):
+        os.makedirs(args.videopath)
+
 if __name__ == "__main__":
-    app.mount("/", StaticFiles(directory="static", html=True), name="static")
-    uvicorn.run(app, host=args.host, port=args.port)
+    uvicorn.run(
+        "server:app",
+        host=args.host,
+        port=args.port,
+        reload=True,
+    )
