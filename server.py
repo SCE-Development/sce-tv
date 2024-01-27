@@ -168,9 +168,6 @@ async def stop():
         # Stop the video playing subprocess
         process_dict[State.PLAYING].terminate()
         process_dict.pop(State.PLAYING)
-    #start interlude again
-    if args.interlude:
-        interlude_lock.release()
 
 @app.get('/metrics')
 def get_metrics():
