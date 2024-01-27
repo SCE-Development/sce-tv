@@ -125,13 +125,12 @@ def _get_url_type(url:str):
 
 @app.get("/state")
 async def state():
-    if State.INTERLUDE in process_dict:
-        return { "state": State.INTERLUDE }
-    else:
-        return  {
+    if State.PLAYING in process_dict:
+        return {
                     "state": State.PLAYING,
                     "nowPlaying": current_video_dict
                 }
+    return  { "state": State.INTERLUDE }
 
 @app.post("/play")
 async def play(url: str):
