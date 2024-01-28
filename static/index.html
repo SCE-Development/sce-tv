@@ -10,7 +10,7 @@
 
 <body>
     <div style="text-align: center;">
-        <div id="interlude">
+        <div id="main">
             <input type="text" id="url" placeholder="PASTE A YOUTUBE LINK FOR EPICNESS">
             <select id="resolution">
                 <option value="144">144p</option>
@@ -20,9 +20,6 @@
                 <option value="1080">1080p</option>
             </select>
             <button type="button" id="play" style="background-color: green;">Play</button>
-        </div>
-
-        <div id="playing">
             <button type="button" id="stop" style="background-color:red;" onclick="Stop(event)">Stop</button>
             <h2>NOW PLAYING:</h2>
             <h3 id="title"></h3>
@@ -59,22 +56,17 @@
                 alert(res_json["detail"]);
             }
         }
-    
+        
         async function Stop(e) {
             e.preventDefault();
             await fetch(stopURL.href, { method: "POST" });
-            document.getElementById("interlude").style.visibility = "visible";
-            document.getElementById("playing").style.visibility = "hidden";
+            window.location.reload();
         }
         fetch(stateURL.href).then((response) => response.json()).then((json) => {
             const state = json["state"];
-            if (state === "interlude") {
-                document.getElementById("playing").style.visibility = "hidden";
-            }
-            else {
-                document.getElementById("interlude").style.visibility = "hidden";
+            if (state != "interlude") {
                 document.getElementById('title').innerHTML = json["nowPlaying"]["title"];
-                document.getElementById('thumbnail').src = json["nowPlaying"]["thumbnail"]
+                document.getElementById('thumbnail').src = json["nowPlaying"]["thumbnail"];
             }
         })
     </script>

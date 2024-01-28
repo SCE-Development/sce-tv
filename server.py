@@ -175,7 +175,7 @@ def get_metrics():
         media_type="text/plain",
         content=prometheus_client.generate_latest(),
     )
-    
+
 @app.on_event("shutdown")
 def signal_handler():
     for video_type in State:
