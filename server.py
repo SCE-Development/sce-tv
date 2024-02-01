@@ -118,8 +118,10 @@ def _get_url_type(url:str):
         split_url = re.split(r'/|\?', url)
         if split_url[3] == "playlist":
             return UrlType.PLAYLIST
-        else:
+        elif split_url[3] == "watch":
             return UrlType.VIDEO
+        else:
+            raise Exception
     except:
         raise HTTPException(status_code=400, detail="That is not a valid YouTube link. Double check the url and try again.")
 
