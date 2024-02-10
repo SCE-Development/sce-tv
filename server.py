@@ -165,7 +165,8 @@ async def play(url: str):
     except pytube.exceptions.VideoUnavailable:
         raise HTTPException(status_code=404, detail="This video is unavailable :(")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # logg
+        raise HTTPException(status_code=500, detail=repr(e))
     
 @app.post("/stop")
 async def stop():
