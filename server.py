@@ -167,7 +167,7 @@ async def play(url: str):
         raise HTTPException(status_code=404, detail="This video is unavailable :(")
     except Exception as e:
         logging.exception(e)
-        raise HTTPException(status_code=500, detail=repr(e))
+        raise HTTPException(status_code=500, detail="check logs")
     
 @app.post("/stop")
 async def stop():
