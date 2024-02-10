@@ -5,6 +5,7 @@ import subprocess
 import threading
 from urllib.parse import unquote
 import uvicorn
+import logging
 
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -165,7 +166,7 @@ async def play(url: str):
     except pytube.exceptions.VideoUnavailable:
         raise HTTPException(status_code=404, detail="This video is unavailable :(")
     except Exception as e:
-        # logg
+        logging.exception(e)
         raise HTTPException(status_code=500, detail=repr(e))
     
 @app.post("/stop")
