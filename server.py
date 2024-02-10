@@ -5,6 +5,7 @@ import subprocess
 import threading
 from urllib.parse import unquote
 import uvicorn
+import logging
 
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -24,6 +25,7 @@ class State(enum.Enum):
 class UrlType(enum.Enum):
     VIDEO = "video"
     PLAYLIST = "playlist"
+    UNKNOWN = "unknown"
 
 app = FastAPI()
 process_dict = {}
@@ -115,13 +117,15 @@ def handle_playlist(playlist_url:str):
 
 def _get_url_type(url:str):
     try:
-        split_url = re.split(r'/|\?', url)
-        if split_url[3] == "playlist":
-            return UrlType.PLAYLIST
-        else:
-            return UrlType.VIDEO
+        pytube.Playlist(url)
+        return UrlType.PLAYLIST
     except:
-        raise HTTPException(status_code=400, detail="That is not a valid YouTube link. Double check the url and try again.")
+        try:
+            pytube.YouTube(url)
+            return UrlType.VIDEO
+        except:
+            return UrlType.UNKNOWN
+
 
 @app.get("/state")
 async def state():
@@ -141,12 +145,15 @@ async def play(url: str):
     
     # Start thread to download video, stream it, and provide a response
     try:
+        # Check if the given url is a valid video or playlist
         if _get_url_type(url) == UrlType.VIDEO:
             threading.Thread(target=handle_play, args=(url,)).start()
-        else:
+        elif _get_url_type(url) == UrlType.PLAYLIST:
             if len(Playlist(url)) == 0:
                 raise Exception("This playlist url is invalid. Playlist may be empty or no longer exists.")
             threading.Thread(target=handle_playlist, args=(url,)).start()
+        else:
+            raise HTTPException(status_code=400, detail="given url is of unknown type")
         # Update Metrics
         MetricsHandler.video_count.inc(amount=1)
         return { "detail": "Success" }
@@ -159,7 +166,8 @@ async def play(url: str):
     except pytube.exceptions.VideoUnavailable:
         raise HTTPException(status_code=404, detail="This video is unavailable :(")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logging.exception(e)
+        raise HTTPException(status_code=500, detail="check logs")
     
 @app.post("/stop")
 async def stop():
