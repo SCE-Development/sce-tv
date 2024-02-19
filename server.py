@@ -17,6 +17,9 @@ from modules.args import get_args
 from modules.cache import Cache
 from modules.metrics import MetricsHandler
 
+import signal
+import psutil
+
 class State(enum.Enum):
     INTERLUDE = "interlude"
     PLAYING = "playing"
@@ -49,12 +52,30 @@ def create_ffmpeg_stream(video_path:str, video_type:State, loop=False):
     # Loop the interlude stream
     if loop: 
         command[2:2] = ['-stream_loop', '-1']
-    process_dict[video_type] = subprocess.Popen(
-        command, 
-        stdout=subprocess.DEVNULL, 
-        stdin=subprocess.DEVNULL, 
-        stderr=subprocess.DEVNULL
+    process = subprocess.Popen(
+    command, 
+    stdout=subprocess.DEVNULL, 
+    stdin=subprocess.DEVNULL, 
+    stderr=subprocess.DEVNULL
     )
+    process_dict[video_type] = process.pid
+    process.wait()
+
+def stop_video_by_type(video_type: UrlType):
+  if video_type in process_dict:
+      kill_child_processes(process_dict[video_type])
+      process_dict.pop(video_type)
+  pass
+
+def kill_child_processes(parent_pid, sig=signal.SIGKILL):
+    try:
+        parent = psutil.Process(parent_pid)
+        parent.send_signal(sig)
+    except psutil.NoSuchProcess:
+        return
+    children = parent.children(recursive=True)
+    for process in children:
+        process.send_signal(sig)
     
 def handle_interlude():
     while True:
@@ -68,12 +89,9 @@ def handle_play(url:str):
     # Update process state
     if State.INTERLUDE in process_dict:
         # Stop interlude
-        process_dict[State.INTERLUDE].terminate()
-        process_dict.pop(State.INTERLUDE)
+        stop_video_by_type(process_dict[State.INTERLUDE])
     download_and_play_video(url)
-    process_dict[State.PLAYING].wait()
     # Start streaming video
-    process_dict.pop(State.PLAYING)
     # Once video is finished playing (or stopped early), restart interlude
     if args.interlude:
         interlude_lock.release()
@@ -96,9 +114,8 @@ def handle_playlist(playlist_url:str):
     playlist = Playlist(playlist_url)
     # Update process state
     if State.INTERLUDE in process_dict:
-        interlude_process = process_dict.pop(State.INTERLUDE)
+        stop_video_by_type[State.INTERLUDE]
     # Stop interlude
-    interlude_process.terminate()
     for i in range(len(playlist)):
         video_url = playlist[i]
         video = YouTube(video_url)
@@ -109,7 +126,6 @@ def handle_playlist(playlist_url:str):
             # Start downloading next video
             threading.Thread(target=download_next_video_in_list, args=(playlist, i),).start()
             download_and_play_video(video_url)
-            process_dict[State.PLAYING].wait()
     if args.interlude:
         interlude_lock.release()
 
@@ -166,8 +182,7 @@ async def stop():
     # Check if there is a video playing to stop
     if State.PLAYING in process_dict:
         # Stop the video playing subprocess
-        process_dict[State.PLAYING].terminate()
-        process_dict.pop(State.PLAYING)
+        stop_video_by_type(State.PLAYING)
 
 @app.get('/metrics')
 def get_metrics():
@@ -181,7 +196,7 @@ def signal_handler():
     for video_type in State:
         if video_type in process_dict:
             # Stop the video playing subprocess
-            process_dict[video_type].terminate()
+            stop_video_by_type(video_type)
     video_cache.clear()
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
