@@ -5,6 +5,7 @@ import subprocess
 import threading
 from urllib.parse import unquote
 import uvicorn
+import signal
 
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,13 +13,11 @@ from fastapi.staticfiles import StaticFiles
 from pytube import YouTube, Playlist
 import pytube.exceptions 
 import prometheus_client
+import psutil
 
 from modules.args import get_args
 from modules.cache import Cache
 from modules.metrics import MetricsHandler
-
-import signal
-import psutil
 
 class State(enum.Enum):
     INTERLUDE = "interlude"
@@ -53,10 +52,10 @@ def create_ffmpeg_stream(video_path:str, video_type:State, loop=False):
     if loop: 
         command[2:2] = ['-stream_loop', '-1']
     process = subprocess.Popen(
-    command, 
-    stdout=subprocess.DEVNULL, 
-    stdin=subprocess.DEVNULL, 
-    stderr=subprocess.DEVNULL
+        command, 
+        stdout=subprocess.DEVNULL, 
+        stdin=subprocess.DEVNULL, 
+        stderr=subprocess.DEVNULL
     )
     process_dict[video_type] = process.pid
     process.wait()
@@ -71,11 +70,11 @@ def kill_child_processes(parent_pid, sig=signal.SIGKILL):
     try:
         parent = psutil.Process(parent_pid)
         parent.send_signal(sig)
+        children = parent.children(recursive=True)
+        for process in children:
+            process.send_signal(sig)
     except psutil.NoSuchProcess:
         return
-    children = parent.children(recursive=True)
-    for process in children:
-        process.send_signal(sig)
     
 def handle_interlude():
     while True:
@@ -89,7 +88,7 @@ def handle_play(url:str):
     # Update process state
     if State.INTERLUDE in process_dict:
         # Stop interlude
-        stop_video_by_type(process_dict[State.INTERLUDE])
+        stop_video_by_type(State.INTERLUDE)
     download_and_play_video(url)
     # Start streaming video
     # Once video is finished playing (or stopped early), restart interlude
@@ -114,7 +113,7 @@ def handle_playlist(playlist_url:str):
     playlist = Playlist(playlist_url)
     # Update process state
     if State.INTERLUDE in process_dict:
-        stop_video_by_type[State.INTERLUDE]
+        stop_video_by_type(State.INTERLUDE)
     # Stop interlude
     for i in range(len(playlist)):
         video_url = playlist[i]
