@@ -28,6 +28,11 @@
             <h3 id="title"></h3>
             <img id="thumbnail" style="border-style: solid;border-width: 3px;border-radius: 25px;" width="640">
         </div>
+
+        <div id="checkbox">
+            <input type="checkbox" id="loop" name="loop">
+            <label for="loop">loop?</label>
+        </div>
     </div>
     <script>
         let stateURL = new URL(window.location.pathname + "state", window.location.origin)
@@ -39,9 +44,14 @@
             e.preventDefault();
             const url = document.getElementById('url').value;
             let playURL = new URL(window.location.pathname + "play", window.location.origin)
-
+            let checkboxBool = document.getElementById("loop").checked;
+            console.log(checkboxBool)
+            
             playURL.searchParams.append("url", encodeURIComponent(url))
-
+            if(checkboxBool){
+                playURL.searchParams.append("loop","True")
+            }
+            console.log(playURL)
             const response = await fetch(playURL.href, {
                 method: "POST",
             });

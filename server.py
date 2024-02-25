@@ -83,7 +83,7 @@ def handle_interlude():
         interlude_lock.acquire()
         create_ffmpeg_stream(args.interlude, State.INTERLUDE, True)
 
-def handle_play(url:str):
+def handle_play(url:str,loop:bool):
     video = YouTube(url)
     current_video_dict["title"] = video.title
     current_video_dict["thumbnail"] = video.thumbnail_url 
@@ -91,7 +91,7 @@ def handle_play(url:str):
     if State.INTERLUDE in process_dict:
         # Stop interlude
         stop_video_by_type(State.INTERLUDE)
-    download_and_play_video(url)
+    download_and_play_video(url,loop)
     # Start streaming video
     # Once video is finished playing (or stopped early), restart interlude
     if args.interlude:
@@ -104,12 +104,12 @@ def download_next_video_in_list(playlist, current_index):
         if video_cache.find(Cache.get_video_id(video_url)) is None:
             video_cache.add(video_url)
 
-def download_and_play_video(url):
+def download_and_play_video(url,loop):
     video_path = video_cache.find(Cache.get_video_id(url))
     if video_path is None:
         video_cache.add(url)
         video_path = video_cache.find(Cache.get_video_id(url))
-    create_ffmpeg_stream(video_path, State.PLAYING)
+    create_ffmpeg_stream(video_path, State.PLAYING,loop)
 
 def handle_playlist(playlist_url:str):
     playlist = Playlist(playlist_url)
@@ -154,7 +154,7 @@ async def state():
     return  { "state": State.INTERLUDE }
 
 @app.post("/play")
-async def play(url: str):
+async def play(url: str,loop: bool=False):
     url = unquote(url)
     # Check if video is already playing
     if State.PLAYING in process_dict:
@@ -165,7 +165,10 @@ async def play(url: str):
         url_type = _get_url_type(url)
         # Check if the given url is a valid video or playlist
         if url_type == UrlType.VIDEO:
-            threading.Thread(target=handle_play, args=(url,)).start()
+            if loop:
+                threading.Thread(target=handle_play, args=(url,loop)).start()
+            else:
+                threading.Thread(target=handle_play, args=(url,False)).start()
         elif url_type == UrlType.PLAYLIST:
             if len(Playlist(url)) == 0:
                 raise Exception("This playlist url is invalid. Playlist may be empty or no longer exists.")
