@@ -45,13 +45,12 @@
             const url = document.getElementById('url').value;
             let playURL = new URL(window.location.pathname + "play", window.location.origin)
             let checkboxBool = document.getElementById("loop").checked;
-            console.log(checkboxBool)
             
             playURL.searchParams.append("url", encodeURIComponent(url))
             if(checkboxBool){
                 playURL.searchParams.append("loop","True")
             }
-            console.log(playURL)
+
             const response = await fetch(playURL.href, {
                 method: "POST",
             });
