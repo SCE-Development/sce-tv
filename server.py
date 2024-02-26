@@ -165,10 +165,7 @@ async def play(url: str,loop: bool=False):
         url_type = _get_url_type(url)
         # Check if the given url is a valid video or playlist
         if url_type == UrlType.VIDEO:
-            if loop:
-                threading.Thread(target=handle_play, args=(url,loop)).start()
-            else:
-                threading.Thread(target=handle_play, args=(url,False)).start()
+            threading.Thread(target=handle_play, args=(url,loop)).start()
         elif url_type == UrlType.PLAYLIST:
             if len(Playlist(url)) == 0:
                 raise Exception("This playlist url is invalid. Playlist may be empty or no longer exists.")
