@@ -35,17 +35,16 @@
         let stopURL = new URL(window.location.pathname + "stop", window.location.origin)
         let playButton = document.getElementById("play");
         let loopButton = document.getElementById("loop");
-        let loopBool = false;
+        let videoWillLoop = false;
         playButton.addEventListener("click", Play);
-        loopButton.addEventListener("click", toggleBool);
+        loopButton.addEventListener("click", toggleLoopVideo);
 
-        async function toggleBool(){
-            loopBool = !loopBool;
-            if(loopBool){
+        async function toggleLoopVideo(){
+            videoWillLoop = !videoWillLoop;
+            if(videoWillLoop){
                 loopButton.textContent = "Video will loop!";
                 loopButton.style.backgroundColor="darkblue";
-            }
-            else{
+            } else {
                 loopButton.textContent = "Loop Video?";
                 loopButton.style.backgroundColor="blue";
             }
@@ -57,8 +56,8 @@
             let playURL = new URL(window.location.pathname + "play", window.location.origin)
             
             playURL.searchParams.append("url", encodeURIComponent(url))
-            if(loopBool){
-                playURL.searchParams.append("loop","True")
+            if(videoWillLoop){
+                playURL.searchParams.append("loop", 1)
             }
 
             const response = await fetch(playURL.href, {
