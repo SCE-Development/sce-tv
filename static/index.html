@@ -19,6 +19,7 @@
                 <option value="720">720p</option>
                 <option value="1080">1080p</option>
             </select>
+            <button type="button" id="loop" style="background-color: blue;">Loop Video?</button>
             <button type="button" id="play" style="background-color: green;">Play</button>
         </div>
 
@@ -33,14 +34,31 @@
         let stateURL = new URL(window.location.pathname + "state", window.location.origin)
         let stopURL = new URL(window.location.pathname + "stop", window.location.origin)
         let playButton = document.getElementById("play");
+        let loopButton = document.getElementById("loop");
+        let videoWillLoop = false;
         playButton.addEventListener("click", Play);
-   
+        loopButton.addEventListener("click", toggleLoopVideo);
+
+        async function toggleLoopVideo(){
+            videoWillLoop = !videoWillLoop;
+            if(videoWillLoop){
+                loopButton.textContent = "Video will loop!";
+                loopButton.style.backgroundColor="darkblue";
+            } else {
+                loopButton.textContent = "Loop Video?";
+                loopButton.style.backgroundColor="blue";
+            }
+        }
+        
         async function Play(e) {
             e.preventDefault();
             const url = document.getElementById('url').value;
             let playURL = new URL(window.location.pathname + "play", window.location.origin)
-
+            
             playURL.searchParams.append("url", encodeURIComponent(url))
+            if(videoWillLoop){
+                playURL.searchParams.append("loop", 1)
+            }
 
             const response = await fetch(playURL.href, {
                 method: "POST",
