@@ -99,10 +99,11 @@ def handle_play(url:str,loop:bool):
 
 def download_next_video_in_list(playlist, current_index):
     next_index = current_index + 1 
-    if next_index < len(playlist):
-        video_url = playlist[next_index]
-        if video_cache.find(Cache.get_video_id(video_url)) is None:
-            video_cache.add(video_url)
+    if next_index==(len(playlist)):
+        next_index = 0
+    video_url = playlist[next_index]
+    if video_cache.find(Cache.get_video_id(video_url)) is None:
+        video_cache.add(video_url)
 
 def download_and_play_video(url,loop):
     video_path = video_cache.find(Cache.get_video_id(url))
@@ -111,22 +112,38 @@ def download_and_play_video(url,loop):
         video_path = video_cache.find(Cache.get_video_id(url))
     create_ffmpeg_stream(video_path, State.PLAYING,loop)
 
-def handle_playlist(playlist_url:str):
+def handle_playlist(playlist_url:str, loop:bool):
     playlist = Playlist(playlist_url)
     # Update process state
     if State.INTERLUDE in process_dict:
         stop_video_by_type(State.INTERLUDE)
     # Stop interlude
-    for i in range(len(playlist)):
-        video_url = playlist[i]
-        video = YouTube(video_url)
-        # Only play age-unrestricted videos to avoid exceptions
-        if not video.age_restricted:
-            current_video_dict["title"] = video.title
-            current_video_dict["thumbnail"] = video.thumbnail_url 
-            # Start downloading next video
-            threading.Thread(target=download_next_video_in_list, args=(playlist, i),).start()
-            download_and_play_video(video_url)
+    if loop:
+        global canLoop
+        canLoop = True
+        i=0
+        while canLoop:
+            video_url = playlist[i]
+            video = YouTube(video_url)
+            # Only play age-unrestricted videos to avoid exceptions
+            if not video.age_restricted:
+                current_video_dict["title"] = video.title
+                current_video_dict["thumbnail"] = video.thumbnail_url 
+                # Start downloading next video
+                threading.Thread(target=download_next_video_in_list, args=(playlist, i),).start()
+                download_and_play_video(video_url,False)
+            i = (i + 1) % len(playlist)
+    else: 
+        for i in range(len(playlist)):
+            video_url = playlist[i]
+            video = YouTube(video_url)
+            # Only play age-unrestricted videos to avoid exceptions
+            if not video.age_restricted:
+                current_video_dict["title"] = video.title
+                current_video_dict["thumbnail"] = video.thumbnail_url 
+                # Start downloading next video
+                threading.Thread(target=download_next_video_in_list, args=(playlist, i),).start()
+                download_and_play_video(video_url,False)
     if args.interlude:
         interlude_lock.release()
 
@@ -169,7 +186,7 @@ async def play(url: str,loop: bool=False):
         elif url_type == UrlType.PLAYLIST:
             if len(Playlist(url)) == 0:
                 raise Exception("This playlist url is invalid. Playlist may be empty or no longer exists.")
-            threading.Thread(target=handle_playlist, args=(url,)).start()
+            threading.Thread(target=handle_playlist, args=(url,loop)).start()
         else:
             raise HTTPException(status_code=400, detail="given url is of unknown type")
         # Update Metrics
@@ -192,6 +209,8 @@ async def stop():
     # Check if there is a video playing to stop
     if State.PLAYING in process_dict:
         # Stop the video playing subprocess
+        global canLoop
+        canLoop = False
         stop_video_by_type(State.PLAYING)
 
 @app.get('/metrics')
