@@ -122,24 +122,8 @@ def handle_playlist(playlist_url:str, loop:bool):
     if State.INTERLUDE in process_dict:
         stop_video_by_type(State.INTERLUDE)
     # Stop interlude
-    if loop:
-        i=0
-        while True:
-            video_url = playlist[i]
-            video = YouTube(video_url)
-            # Only play age-unrestricted videos to avoid exceptions
-            if not video.age_restricted:
-                current_video_dict["title"] = video.title
-                current_video_dict["thumbnail"] = video.thumbnail_url 
-                # Start downloading next video
-                threading.Thread(target=download_next_video_in_list, args=(playlist, i),).start()
-                # if the return code is not zero, break out of the loop
-                # the playlist should stop on its own without use of a global variable
-                result = download_and_play_video(video_url,False)
-                if result != 0:
-                    break
-            i = (i + 1) % len(playlist)
-    else: 
+    while True:
+        resultisnot0= False
         for i in range(len(playlist)):
             video_url = playlist[i]
             video = YouTube(video_url)
@@ -149,7 +133,12 @@ def handle_playlist(playlist_url:str, loop:bool):
                 current_video_dict["thumbnail"] = video.thumbnail_url 
                 # Start downloading next video
                 threading.Thread(target=download_next_video_in_list, args=(playlist, i),).start()
-                download_and_play_video(video_url,False)
+                result = download_and_play_video(video_url,False)
+            if result !=0:
+                resultisnot0 = True
+                break
+        if not loop or resultisnot0:
+            break
     if args.interlude:
         interlude_lock.release()
 
