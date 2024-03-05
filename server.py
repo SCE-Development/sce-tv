@@ -123,7 +123,6 @@ def handle_playlist(playlist_url:str, loop:bool):
         stop_video_by_type(State.INTERLUDE)
     # Stop interlude
     while True:
-        resultisnot0= False
         for i in range(len(playlist)):
             video_url = playlist[i]
             video = YouTube(video_url)
@@ -135,9 +134,8 @@ def handle_playlist(playlist_url:str, loop:bool):
                 threading.Thread(target=download_next_video_in_list, args=(playlist, i),).start()
                 result = download_and_play_video(video_url,False)
             if result !=0:
-                resultisnot0 = True
                 break
-        if not loop or resultisnot0:
+        if not loop or result!=0:
             break
     if args.interlude:
         interlude_lock.release()
