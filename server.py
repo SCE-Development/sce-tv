@@ -46,6 +46,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# return the result of process.wait()
 def create_ffmpeg_stream(video_path:str, video_type:State, loop=False):
     command = [ 'ffmpeg', '-re', '-i', video_path, '-vf', f'scale=640:360', 
                 '-c:v', 'libx264', '-preset', 'veryfast', '-tune', 'zerolatency', 
@@ -60,7 +61,9 @@ def create_ffmpeg_stream(video_path:str, video_type:State, loop=False):
         stderr=subprocess.DEVNULL
     )
     process_dict[video_type] = process.pid
-    process.wait()
+    # the below function returns 0 if the video ended on its own
+    # 137, 1
+    return process.wait()
 
 def stop_video_by_type(video_type: UrlType):
   if video_type in process_dict:
@@ -105,12 +108,13 @@ def download_next_video_in_list(playlist, current_index):
     if video_cache.find(Cache.get_video_id(video_url)) is None:
         video_cache.add(video_url)
 
+# return the result of create_ffmpeg_stream
 def download_and_play_video(url,loop):
     video_path = video_cache.find(Cache.get_video_id(url))
     if video_path is None:
         video_cache.add(url)
         video_path = video_cache.find(Cache.get_video_id(url))
-    create_ffmpeg_stream(video_path, State.PLAYING,loop)
+    return create_ffmpeg_stream(video_path, State.PLAYING,loop)
 
 def handle_playlist(playlist_url:str, loop:bool):
     playlist = Playlist(playlist_url)
@@ -119,10 +123,8 @@ def handle_playlist(playlist_url:str, loop:bool):
         stop_video_by_type(State.INTERLUDE)
     # Stop interlude
     if loop:
-        global canLoop
-        canLoop = True
         i=0
-        while canLoop:
+        while True:
             video_url = playlist[i]
             video = YouTube(video_url)
             # Only play age-unrestricted videos to avoid exceptions
@@ -131,7 +133,11 @@ def handle_playlist(playlist_url:str, loop:bool):
                 current_video_dict["thumbnail"] = video.thumbnail_url 
                 # Start downloading next video
                 threading.Thread(target=download_next_video_in_list, args=(playlist, i),).start()
-                download_and_play_video(video_url,False)
+                # if the return code is not zero, break out of the loop
+                # the playlist should stop on its own without use of a global variable
+                result = download_and_play_video(video_url,False)
+                if result != 0:
+                    break
             i = (i + 1) % len(playlist)
     else: 
         for i in range(len(playlist)):
@@ -209,8 +215,6 @@ async def stop():
     # Check if there is a video playing to stop
     if State.PLAYING in process_dict:
         # Stop the video playing subprocess
-        global canLoop
-        canLoop = False
         stop_video_by_type(State.PLAYING)
 
 @app.get('/metrics')
