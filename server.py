@@ -210,6 +210,27 @@ def get_metrics():
         media_type="text/plain",
         content=prometheus_client.generate_latest(),
     )
+
+@app.get('/debug')
+def debug():
+    cache = Cache()
+
+    short_hash = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD']).strip().decode()
+    branch_name = subprocess.check_output(['git', 'rev-parse', '--abbrev-ref', 'HEAD']).strip().decode()
+
+    dirty = 0
+    if len(subprocess.check_output(['git', 'status', '--short']).decode()) > 0:
+        dirty = 1
+    return {
+            "scetv_githash": short_hash,
+            "scetv_gitbranch": branch_name,
+            "scetv_gitdirty": dirty,
+            "state": {
+                "process_dict": str(process_dict),
+                "current_video_dict": str(current_video_dict)
+                    },
+            "cache": vars(cache)
+            }
     
 @app.on_event("shutdown")
 def signal_handler():
