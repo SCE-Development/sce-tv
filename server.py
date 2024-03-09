@@ -213,14 +213,13 @@ def get_metrics():
 
 @app.get('/debug')
 def debug():
-    cache = Cache()
     return {
 
             "state": {
                 "process_dict": str(process_dict),
                 "current_video_dict": str(current_video_dict)
                     },
-            "cache": vars(cache)
+            "cache": vars(video_cache)
             }
     
 @app.on_event("shutdown")

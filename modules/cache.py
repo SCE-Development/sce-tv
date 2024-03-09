@@ -18,7 +18,7 @@ class VideoInfo():
         return f"VideoInfo(video_id={self.video_id}, file_path={self.file_path}, size_bytes={self.size_bytes})"
 
 class Cache():
-    def __init__(self, file_path:str="not_available", max_size_bytes:int=2_000_000_000) -> None:
+    def __init__(self, file_path: str, max_size_bytes:int=2_000_000_000) -> None:
         self.file_path = file_path
         self.max_size_bytes = max_size_bytes
         self.current_size_bytes = 0
