@@ -210,6 +210,17 @@ def get_metrics():
         media_type="text/plain",
         content=prometheus_client.generate_latest(),
     )
+
+@app.get('/debug')
+def debug():
+    return {
+
+            "state": {
+                "process_dict": str(process_dict),
+                "current_video_dict": str(current_video_dict)
+                    },
+            "cache": vars(video_cache)
+            }
     
 @app.on_event("shutdown")
 def signal_handler():
