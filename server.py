@@ -216,8 +216,8 @@ def debug():
     return {
 
             "state": {
-                "process_dict": str(process_dict),
-                "current_video_dict": str(current_video_dict)
+                "process_dict": process_dict,
+                "current_video_dict": current_video_dict
                     },
             "cache": vars(video_cache)
             }
