@@ -496,6 +496,12 @@ def debug():
 def signal_handler():
     stop_all_videos()
 
+    if os.path.exists(args.hls):
+        for file in os.listdir(args.hls):
+            file_path = os.path.join(args.hls, file)
+            if os.path.isfile(file_path):
+                os.unlink(file_path)
+
     # if the cache file is specfied, write the cache to the file and not clear the downloaded videos
     if args.cache_state_file:
         video_cache.write_cache()
