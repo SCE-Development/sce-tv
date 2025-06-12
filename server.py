@@ -518,6 +518,7 @@ def signal_handler():
 
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
+app.mount("/static/hls", StaticFiles(directory=args.hls), name="hls")
 
 
 # we have a separate __name__ check here due to how FastAPI starts
