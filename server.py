@@ -287,6 +287,35 @@ def handle_cache_play():
             break
 
 
+def run_hls_stream():
+    logging.info("Starting ffmpeg command for HLS stream.")
+
+    if not os.path.exists(args.hls):
+        os.makedirs(args.hls)
+
+    command = [
+        "ffmpeg",
+        "-i",
+        "rtmp://localhost:1935/live/mystream",
+        "-c:v", "copy",
+        "-c:a", "copy",
+        "-f", "hls",
+        "-hls_time", "4",
+        "-hls_list_size", "5",
+        "-hls_flags", "delete_segments",
+        f"{args.hls}/tv.m3u8"
+    ]
+
+    process = subprocess.Popen(
+        command,
+        stdout=subprocess.DEVNULL,
+        stdin=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+    logging.info(f"HLS stream started with PID {process.pid}")
+
+
 @app.get("/state")
 async def state():
     result = {"state": State.INTERLUDE}
@@ -488,6 +517,8 @@ if __name__ == "server":
     MetricsHandler.init()
     MetricsHandler.cache_size.set(0)
     MetricsHandler.cache_size_bytes.set(0)
+    
+    threading.Thread(target=run_hls_stream).start()
     # Start up interlude by default
     if args.interlude:
         threading.Thread(target=handle_interlude).start()
