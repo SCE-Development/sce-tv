@@ -481,6 +481,11 @@ def get_cache():
     return FileResponse("static/cache.html")
 
 
+@app.get("/hls")
+def get_hls():
+    return FileResponse("static/hls.html")
+
+
 @app.get("/debug")
 def debug():
     return {
@@ -496,6 +501,7 @@ def debug():
 def signal_handler():
     stop_all_videos()
 
+    # clears all files in the hls directory
     if os.path.exists(args.hls):
         for file in os.listdir(args.hls):
             file_path = os.path.join(args.hls, file)
