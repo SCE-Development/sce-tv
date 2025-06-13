@@ -290,20 +290,20 @@ def handle_cache_play():
 def run_hls_stream():
     logging.info("Starting ffmpeg command for HLS stream.")
 
-    if not os.path.exists(args.hls):
-        os.makedirs(args.hls)
+    if not os.path.exists(args.hls_file_path):
+        os.makedirs(args.hls_file_path)
 
     command = [
         "ffmpeg",
         "-i",
-        "rtmp://localhost:1935/live/mystream",
+        args.rtmp_stream_url,
         "-c:v", "copy",
         "-c:a", "copy",
         "-f", "hls",
         "-hls_time", "4",
         "-hls_list_size", "5",
         "-hls_flags", "delete_segments",
-        f"{args.hls}/tv.m3u8"
+        f"{args.hls_file_path}/tv.m3u8"
     ]
 
     process = subprocess.Popen(
@@ -502,9 +502,9 @@ def signal_handler():
     stop_all_videos()
 
     # clears all files in the hls directory
-    if os.path.exists(args.hls):
-        for file in os.listdir(args.hls):
-            file_path = os.path.join(args.hls, file)
+    if os.path.exists(args.hls_file_path):
+        for file in os.listdir(args.hls_file_path):
+            file_path = os.path.join(args.hls_file_path, file)
             if os.path.isfile(file_path):
                 os.unlink(file_path)
 
@@ -518,7 +518,7 @@ def signal_handler():
 
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
-app.mount("/static/hls", StaticFiles(directory=args.hls), name="hls")
+app.mount("/hls", StaticFiles(directory=args.hls_file_path), name="hls")
 
 
 # we have a separate __name__ check here due to how FastAPI starts
