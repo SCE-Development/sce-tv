@@ -295,7 +295,7 @@ def run_hls_stream():
     # Ensure the directory that will contain the playlist exists
     playlist_path.parent.mkdir(parents=True, exist_ok=True)
     ffmpegcommand = [
-        "fffmpeg",
+        "ffmpeg",
         "-i",
         args.rtmp_stream_url,
         "-c:v", "copy",
