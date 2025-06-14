@@ -294,9 +294,8 @@ def run_hls_stream():
     playlist_path = Path(args.hls_file_path).resolve()
     # Ensure the directory that will contain the playlist exists
     playlist_path.parent.mkdir(parents=True, exist_ok=True)
-
-    command = [
-        "ffmpeg",
+    ffmpegcommand = [
+        "fffmpeg",
         "-i",
         args.rtmp_stream_url,
         "-c:v", "copy",
@@ -307,17 +306,23 @@ def run_hls_stream():
         "-hls_flags", "delete_segments",
         f"{args.hls_file_path}/tv.m3u8"
     ]
-
+    #Delay the command to allow the monitor thread to start
+    command = [
+        "sh", "-c",
+        f"sleep 2 && {' '.join(ffmpegcommand)}",
+    ]
+    logging.info(f"Running command: {' '.join(command)}")
     process = subprocess.Popen(
         command,
         stdout=subprocess.DEVNULL,
         stdin=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
     )
 
     logging.info(f"HLS stream started with PID {process.pid}")
 
     def _monitor_hls_process(p):
+        logging.info(f"Monitoring HLS process with PID {p.pid}")
         exit_code = p.wait()
         if exit_code != 0:
             error_output = p.stderr.read().decode(errors="replace")
