@@ -517,9 +517,10 @@ def signal_handler():
         video_cache.clear()
 
 
-app.mount("/", StaticFiles(directory="static", html=True), name="static")
+if not os.path.exists(args.hls_file_path):
+    os.makedirs(args.hls_file_path)
 app.mount("/hls", StaticFiles(directory=args.hls_file_path), name="hls")
-
+app.mount("/", StaticFiles(directory="static", html=True), name="static")
 
 # we have a separate __name__ check here due to how FastAPI starts
 # a server. the file is first ran (where __name__ == "__main__")
