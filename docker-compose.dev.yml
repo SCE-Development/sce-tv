@@ -25,7 +25,6 @@ services:
       - ./static:/app/static
       - ./modules:/app/modules
       - ./videos:/tmp/videos:rw
-      - ./hls:/tmp/hls:rw
     environment:
       - WATCHFILES_FORCE_POLLING=true
   prometheus:

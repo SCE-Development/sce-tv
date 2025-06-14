@@ -9,6 +9,7 @@ import signal
 import logging
 import ssl
 import time
+from pathlib import Path
 
 ssl._create_default_https_context = ssl._create_stdlib_context
 
@@ -290,8 +291,9 @@ def handle_cache_play():
 def run_hls_stream():
     logging.info("Starting ffmpeg command for HLS stream.")
 
-    if not os.path.exists(args.hls_file_path):
-        os.makedirs(args.hls_file_path)
+    playlist_path = Path(args.hls_file_path).resolve()
+    # Ensure the directory that will contain the playlist exists
+    playlist_path.parent.mkdir(parents=True, exist_ok=True)
 
     command = [
         "ffmpeg",
@@ -314,6 +316,14 @@ def run_hls_stream():
     )
 
     logging.info(f"HLS stream started with PID {process.pid}")
+
+    def _monitor_hls_process(p):
+        exit_code = p.wait()
+        if exit_code != 0:
+            error_output = p.stderr.read().decode(errors="replace")
+            logging.error(f"HLS ffmpeg process exited with code {exit_code}. Error output:\n{error_output}")
+
+    threading.Thread(target=_monitor_hls_process, args=(process,), daemon=True).start()
 
 
 @app.get("/state")
@@ -503,11 +513,7 @@ def signal_handler():
 
     # clears all files in the hls directory
     if os.path.exists(args.hls_file_path):
-        for file in os.listdir(args.hls_file_path):
-            file_path = os.path.join(args.hls_file_path, file)
-            if os.path.isfile(file_path):
-                os.unlink(file_path)
-
+        os.unlink(args.hls_file_path)
     # if the cache file is specfied, write the cache to the file and not clear the downloaded videos
     if args.cache_state_file:
         video_cache.write_cache()

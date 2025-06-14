@@ -164,5 +164,3 @@ cython_debug/
 #.idea/
 
 *.mp4
-*.ts
-*.m3u8
