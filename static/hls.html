@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>HLS Player</title>
+  <style>
+    .error-message {
+      color: red;
+      font-weight: bold;
+      margin-top: 10px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <video id="video" controls autoplay></video>
+  <div id="errorMessage" class="error-message">Error 404: Stream Unavailable...Server is trolling</div>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <script>
+    if (Hls.isSupported()) {
+      var video = document.getElementById('video');
+      var hls = new Hls();
+      hls.loadSource('/hls/tv.m3u8');
+      hls.attachMedia(video);
+      
+      // Error handling
+      hls.on(Hls.Events.ERROR, function(event, data) {
+        if (data.fatal) {
+          document.getElementById('errorMessage').style.display = 'block';
+        }
+        else{
+          document.getElementById('errorMessage').style.display = 'none'; 
+        }
+      });
+    }
+  </script>
+</body>
+</html>

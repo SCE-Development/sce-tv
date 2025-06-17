@@ -9,6 +9,7 @@ import signal
 import logging
 import ssl
 import time
+from pathlib import Path
 
 ssl._create_default_https_context = ssl._create_stdlib_context
 
@@ -287,6 +288,49 @@ def handle_cache_play():
             break
 
 
+def run_hls_stream():
+    logging.info("Starting ffmpeg command for HLS stream.")
+
+    playlist_path = Path(args.hls_file_path).resolve()
+    # Ensure the directory that will contain the playlist exists
+    playlist_path.parent.mkdir(parents=True, exist_ok=True)
+    ffmpegcommand = [
+        "ffmpeg",
+        "-i",
+        args.rtmp_stream_url,
+        "-c:v", "copy",
+        "-c:a", "copy",
+        "-f", "hls",
+        "-hls_time", "4",
+        "-hls_list_size", "5",
+        "-hls_flags", "delete_segments",
+        f"{args.hls_file_path}/tv.m3u8"
+    ]
+    #Delay the command to allow the monitor thread to start
+    command = [
+        "sh", "-c",
+        f"sleep 2 && {' '.join(ffmpegcommand)}",
+    ]
+    logging.info(f"Running command: {' '.join(command)}")
+    process = subprocess.Popen(
+        command,
+        stdout=subprocess.DEVNULL,
+        stdin=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+    )
+
+    logging.info(f"HLS stream started with PID {process.pid}")
+
+    def _monitor_hls_process(p):
+        logging.info(f"Monitoring HLS process with PID {p.pid}")
+        exit_code = p.wait()
+        if exit_code != 0:
+            error_output = p.stderr.read().decode(errors="replace")
+            logging.error(f"HLS ffmpeg process exited with code {exit_code}. Error output:\n{error_output}")
+
+    threading.Thread(target=_monitor_hls_process, args=(process,), daemon=True).start()
+
+
 @app.get("/state")
 async def state():
     result = {"state": State.INTERLUDE}
@@ -452,6 +496,11 @@ def get_cache():
     return FileResponse("static/cache.html")
 
 
+@app.get("/hls")
+def get_hls():
+    return FileResponse("static/hls.html")
+
+
 @app.get("/debug")
 def debug():
     return {
@@ -467,6 +516,9 @@ def debug():
 def signal_handler():
     stop_all_videos()
 
+    # clears all files in the hls directory
+    if os.path.exists(args.hls_file_path):
+        os.unlink(args.hls_file_path)
     # if the cache file is specfied, write the cache to the file and not clear the downloaded videos
     if args.cache_state_file:
         video_cache.write_cache()
@@ -476,8 +528,10 @@ def signal_handler():
         video_cache.clear()
 
 
+if not os.path.exists(args.hls_file_path):
+    os.makedirs(args.hls_file_path)
+app.mount("/hls", StaticFiles(directory=args.hls_file_path), name="hls")
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
-
 
 # we have a separate __name__ check here due to how FastAPI starts
 # a server. the file is first ran (where __name__ == "__main__")
@@ -488,6 +542,8 @@ if __name__ == "server":
     MetricsHandler.init()
     MetricsHandler.cache_size.set(0)
     MetricsHandler.cache_size_bytes.set(0)
+    
+    threading.Thread(target=run_hls_stream).start()
     # Start up interlude by default
     if args.interlude:
         threading.Thread(target=handle_interlude).start()
