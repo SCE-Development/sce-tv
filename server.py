@@ -146,7 +146,7 @@ def create_ffmpeg_stream(
 
     if exit_code == 0 and play_interlude_after and args.interlude:
         interlude_lock.release()
-
+    hls_sem.release()
     return exit_code
 
 
@@ -338,7 +338,7 @@ def _clean_hls_dir():
     hls_dir = Path(args.hls_file_path)
     for f in hls_dir.glob("*.ts"):
         f.unlink(missing_ok=True)
-    (hls_dir / "tv.m3u8").unlink(missing_ok=True)
+    #(hls_dir / "tv.m3u8").unlink(missing_ok=True)
 
 @app.get("/state")
 async def state():
