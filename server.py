@@ -60,6 +60,8 @@ current_video_dict = {}
 
 interlude_lock = threading.Lock()
 
+hls_sem = threading.Semaphore()
+
 args = get_args()
 
 # Create a cache object to store video files, initializing it with the file path specified in the command-line arguments or configuration settings. This instance is used to cache downloaded videos.
@@ -289,47 +291,54 @@ def handle_cache_play():
 
 
 def run_hls_stream():
-    logging.info("Starting ffmpeg command for HLS stream.")
-
-    playlist_path = Path(args.hls_file_path).resolve()
-    # Ensure the directory that will contain the playlist exists
+    playlist_path = Path(args.hls_file_path)
     playlist_path.parent.mkdir(parents=True, exist_ok=True)
-    ffmpegcommand = [
-        "ffmpeg",
-        "-i",
-        args.rtmp_stream_url,
-        "-c:v", "copy",
-        "-c:a", "copy",
-        "-f", "hls",
-        "-hls_time", "4",
-        "-hls_list_size", "5",
-        "-hls_flags", "delete_segments",
-        f"{args.hls_file_path}/tv.m3u8"
-    ]
-    #Delay the command to allow the monitor thread to start
-    command = [
-        "sh", "-c",
-        f"sleep 2 && {' '.join(ffmpegcommand)}",
-    ]
-    logging.info(f"Running command: {' '.join(command)}")
-    process = subprocess.Popen(
-        command,
-        stdout=subprocess.DEVNULL,
-        stdin=subprocess.DEVNULL,
-        stderr=subprocess.PIPE,
-    )
+    while True:
+        ffmpeg_cmd = [
+            "ffmpeg",
+            "-i", args.rtmp_stream_url,
+            "-c:v", "copy",
+            "-c:a", "copy",
+            "-f", "hls",
+            "-hls_time", "4",
+            "-hls_list_size", "5",
+            "-hls_flags", "delete_segments",
+            f"{args.hls_file_path}/tv.m3u8",
+        ]
+        proc = subprocess.Popen(
+            ffmpeg_cmd,
+            stdout=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+        )
+        logging.info(f"HLS worker: started FFmpeg PID {proc.pid}")
+        # start the logging thread (non-blocking)
+        threading.Thread(
+            target=_monitor_ffmpeg, args=(proc,), daemon=True
+        ).start()
+        # wait until a playback thread ends
+        hls_sem.acquire()
+        # rotate: kill, clean, loop
+        logging.info("HLS worker: rotate signal, killing FFmpeg & cleaning dir")
+        kill_child_processes(proc.pid)
+        _clean_hls_dir()
 
-    logging.info(f"HLS stream started with PID {process.pid}")
+def _monitor_ffmpeg(proc: subprocess.Popen):
+    """Block until proc dies and log exit / stderr."""
+    exit_code = proc.wait()
+    if exit_code == 0:
+        logging.info(f"HLS ffmpeg exited cleanly (code 0)")
+    else:
+        err = proc.stderr.read().decode(errors="replace")
+        logging.error(
+            f"HLS ffmpeg exited with code {exit_code}\n---- STDERR ----\n{err}"
+        )
 
-    def _monitor_hls_process(p):
-        logging.info(f"Monitoring HLS process with PID {p.pid}")
-        exit_code = p.wait()
-        if exit_code != 0:
-            error_output = p.stderr.read().decode(errors="replace")
-            logging.error(f"HLS ffmpeg process exited with code {exit_code}. Error output:\n{error_output}")
-
-    threading.Thread(target=_monitor_hls_process, args=(process,), daemon=True).start()
-
+def _clean_hls_dir():
+    hls_dir = Path(args.hls_file_path)
+    for f in hls_dir.glob("*.ts"):
+        f.unlink(missing_ok=True)
+    (hls_dir / "tv.m3u8").unlink(missing_ok=True)
 
 @app.get("/state")
 async def state():
