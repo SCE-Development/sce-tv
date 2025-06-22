@@ -90,7 +90,7 @@ def create_ffmpeg_stream(
     loop=False,
     title=None,
     thumbnail=None,
-    play_interlude_after=False,
+    play_interlude_after=True,
 ):
     if video_path is None:
         logging.info("video_path is None. ffmpeg_stream cancelled.")
@@ -135,8 +135,9 @@ def create_ffmpeg_stream(
     MetricsHandler.streams_count.labels(video_type=video_type.value).inc(amount=1)
     # the below function returns 0 if the video ended on its own
     # 137, 1
+    logging.info(f"process {process.pid} started for {video_type.value} video: {video_path}")
     exit_code = process.wait()
-    logging.info(f"process {process.pid} exited with code {exit_code}")
+
     MetricsHandler.subprocess_count.labels(
         exit_code=exit_code,
     ).inc()
@@ -144,9 +145,10 @@ def create_ffmpeg_stream(
         process_dict.pop(video_type)
     current_video_dict.clear()
 
-    if exit_code == 0 and play_interlude_after and args.interlude:
+    if (exit_code == 0 or video_type == State.PLAYING) and play_interlude_after and args.interlude:
         interlude_lock.release()
     hls_sem.release()
+    logging.info(f"exiting create_ffmpeg_stream with exit code {exit_code}")
     return exit_code
 
 
@@ -338,7 +340,6 @@ def _clean_hls_dir():
     hls_dir = Path(args.hls_file_path)
     for f in hls_dir.glob("*.ts"):
         f.unlink(missing_ok=True)
-    #(hls_dir / "tv.m3u8").unlink(missing_ok=True)
 
 @app.get("/state")
 async def state():
@@ -383,11 +384,11 @@ async def play_file(file_path: str = "cache", title: str = None, thumbnail: str 
     except Exception as e:
         logging.exception(e)
         raise HTTPException(status_code=500, detail="check logs")
-    finally:
-        # Start streaming video
-        # Once video is finished playing (or stopped early), restart interlude
-        if args.interlude:
-            interlude_lock.release()
+    # finally:
+    #     # Start streaming video
+    #     # Once video is finished playing (or stopped early), restart interlude
+    #     if args.interlude:
+    #         interlude_lock.release()
 
 
 @app.post("/play")
@@ -474,6 +475,7 @@ async def stop():
     # Check if there is a video playing to stop
     if State.PLAYING in process_dict:
         # Stop the video playing subprocess
+        hls_sem.release()
         stop_video_by_type(State.PLAYING)
 
 
