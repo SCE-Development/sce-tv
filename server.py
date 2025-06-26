@@ -60,7 +60,7 @@ current_video_dict = {}
 
 interlude_lock = threading.Lock()
 
-hls_sem = threading.Semaphore()
+hls_lock = threading.Lock()
 
 args = get_args()
 
@@ -135,8 +135,8 @@ def create_ffmpeg_stream(
     MetricsHandler.streams_count.labels(video_type=video_type.value).inc(amount=1)
     # the below function returns 0 if the video ended on its own
     # 137, 1
-    logging.info(f"process {process.pid} started for {video_type.value} video: {video_path}")
     exit_code = process.wait()
+    logging.info(f"process {process.pid} started for {video_type.value} video: {video_path}")
 
     MetricsHandler.subprocess_count.labels(
         exit_code=exit_code,
@@ -147,7 +147,7 @@ def create_ffmpeg_stream(
 
     if (exit_code == 0 or video_type == State.PLAYING) and play_interlude_after and args.interlude:
         interlude_lock.release()
-    hls_sem.release()
+    hls_lock.release()
     logging.info(f"exiting create_ffmpeg_stream with exit code {exit_code}")
     return exit_code
 
@@ -319,7 +319,7 @@ def run_hls_stream():
             target=_monitor_ffmpeg, args=(proc,), daemon=True
         ).start()
         # wait until a playback thread ends
-        hls_sem.acquire()
+        hls_lock.acquire()
         # rotate: kill, clean, loop
         logging.info("HLS worker: rotate signal, killing FFmpeg & cleaning dir")
         kill_child_processes(proc.pid)
@@ -475,7 +475,7 @@ async def stop():
     # Check if there is a video playing to stop
     if State.PLAYING in process_dict:
         # Stop the video playing subprocess
-        hls_sem.release()
+        hls_lock.release()
         stop_video_by_type(State.PLAYING)
 
 
