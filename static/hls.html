@@ -22,14 +22,25 @@
       const url = new URL('hls/tv.m3u8', window.location.href);
       hls.loadSource(url.href);
       hls.attachMedia(video);
+
+      let reloadTimeout = null;
       
       // Error handling
       hls.on(Hls.Events.ERROR, function(event, data) {
         if (data.fatal) {
           document.getElementById('errorMessage').style.display = 'block';
+          if (!reloadTimeout) {
+            reloadTimeout = setTimeout(() => {
+              window.location.reload()
+            }, 5000)
+          }
         }
         else{
-          document.getElementById('errorMessage').style.display = 'none'; 
+          document.getElementById('errorMessage').style.display = 'none';
+          if (reloadTimeout) {
+            clearTimeout(reloadTimeout);
+            reloadTimeout = null;
+          }
         }
       });
     }
