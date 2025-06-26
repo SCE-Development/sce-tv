@@ -28,11 +28,21 @@
       // Error handling
       hls.on(Hls.Events.ERROR, function(event, data) {
         if (data.fatal) {
-          document.getElementById('errorMessage').style.display = 'block';
+          let countdown = 5;
+          const errorMsg = document.getElementById('errorMessage');
+          errorMsg.style.display = 'block';
+          errorMsg.textContent = `Error 404: Stream Unavailable...Server is trolling. Reloading in ${countdown} seconds.`;
           if (!reloadTimeout) {
-            reloadTimeout = setTimeout(() => {
-              window.location.reload()
-            }, 5000)
+            reloadTimeout = setInterval(() => {
+              countdown--;
+              if (countdown > 0) {
+          errorMsg.textContent = `Error 404: Stream Unavailable...Server is trolling. Reloading in ${countdown} seconds.`;
+              } else {
+          clearInterval(reloadTimeout);
+          reloadTimeout = null;
+          window.location.reload();
+              }
+            }, 1000);
           }
         }
         else{
