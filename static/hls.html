@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html>
+
 <head>
   <title>HLS Player</title>
   <style>
@@ -11,6 +12,7 @@
     }
   </style>
 </head>
+
 <body>
   <video id="video" controls autoplay muted></video>
   <div id="errorMessage" class="error-message">Error 404: Stream Unavailable...Server is trolling</div>
@@ -19,41 +21,37 @@
     if (Hls.isSupported()) {
       var video = document.getElementById('video');
       var hls = new Hls();
-      const url = new URL('hls/tv.m3u8', window.location.href);
-      hls.loadSource(url.href);
-      hls.attachMedia(video);
-
       let reloadTimeout = null;
-      
+      const url = new URL('hls/tv.m3u8', window.location.href);
+
+      function loadHlsSource(errorMsg) {
+        if (reloadTimeout) {
+          clearTimeout(reloadTimeout);
+        }
+
+        document.getElementById('errorMessage').style.display = 'none';
+
+        hls.loadSource(url.href);
+        hls.attachMedia(video);
+      }
+
       // Error handling
-      hls.on(Hls.Events.ERROR, function(event, data) {
+      hls.on(Hls.Events.ERROR, function (event, data) {
         if (data.fatal) {
-          let countdown = 5;
           const errorMsg = document.getElementById('errorMessage');
           errorMsg.style.display = 'block';
-          errorMsg.textContent = `Error 404: Stream Unavailable...Server is trolling. Reloading in ${countdown} seconds.`;
-          if (!reloadTimeout) {
-            reloadTimeout = setInterval(() => {
-              countdown--;
-              if (countdown > 0) {
-          errorMsg.textContent = `Error 404: Stream Unavailable...Server is trolling. Reloading in ${countdown} seconds.`;
-              } else {
-          clearInterval(reloadTimeout);
-          reloadTimeout = null;
-          window.location.reload();
-              }
-            }, 1000);
-          }
+          errorMsg.textContent = `Error 404: Stream Unavailable...Server is trolling. Retrying...`;
+          console.error('Error loading HLS source, retrying...', data);
+          setTimeout(loadHlsSource, 5000, errorMsg);
         }
-        else{
+        else {
           document.getElementById('errorMessage').style.display = 'none';
-          if (reloadTimeout) {
-            clearTimeout(reloadTimeout);
-            reloadTimeout = null;
-          }
         }
       });
     }
+
+    loadHlsSource();
   </script>
 </body>
+
 </html>
