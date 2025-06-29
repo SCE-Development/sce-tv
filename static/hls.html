@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html>
+
 <head>
   <title>HLS Player</title>
   <style>
@@ -11,28 +12,46 @@
     }
   </style>
 </head>
+
 <body>
-  <video id="video" controls autoplay></video>
+  <video id="video" controls autoplay muted></video>
   <div id="errorMessage" class="error-message">Error 404: Stream Unavailable...Server is trolling</div>
   <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
   <script>
     if (Hls.isSupported()) {
       var video = document.getElementById('video');
       var hls = new Hls();
+      let reloadTimeout = null;
       const url = new URL('hls/tv.m3u8', window.location.href);
-      hls.loadSource(url.href);
-      hls.attachMedia(video);
-      
-      // Error handling
-      hls.on(Hls.Events.ERROR, function(event, data) {
-        if (data.fatal) {
-          document.getElementById('errorMessage').style.display = 'block';
+
+      function loadHlsSource(errorMsg) {
+        if (reloadTimeout) {
+          clearTimeout(reloadTimeout);
         }
-        else{
-          document.getElementById('errorMessage').style.display = 'none'; 
+
+        document.getElementById('errorMessage').style.display = 'none';
+
+        hls.loadSource(url.href);
+        hls.attachMedia(video);
+      }
+
+      // Error handling
+      hls.on(Hls.Events.ERROR, function (event, data) {
+        if (data.fatal) {
+          const errorMsg = document.getElementById('errorMessage');
+          errorMsg.style.display = 'block';
+          errorMsg.textContent = `Error 404: Stream Unavailable...Server is trolling. Retrying...`;
+          console.error('Error loading HLS source, retrying...', data);
+          setTimeout(loadHlsSource, 5000, errorMsg);
+        }
+        else {
+          document.getElementById('errorMessage').style.display = 'none';
         }
       });
     }
+
+    loadHlsSource();
   </script>
 </body>
+
 </html>
