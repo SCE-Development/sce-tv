@@ -65,6 +65,9 @@ args = get_args()
 # Create a cache object to store video files, initializing it with the file path specified in the command-line arguments or configuration settings. This instance is used to cache downloaded videos.
 video_cache = Cache(file_path=args.videopath, cache_file=args.cache_state_file)
 
+# Keep track of old threads
+curr_thread = None
+
 # Enable CORS
 app.add_middleware(
     CORSMiddleware,
@@ -168,6 +171,10 @@ def kill_child_processes(parent_pid, sig=signal.SIGKILL):
         children = parent.children(recursive=True)
         for process in children:
             process.send_signal(sig)
+        #Added as a precaution in case the thread closes after a new one is created
+        # resulting in no the dictionary not being cleared, and no thumbnail showing up
+        current_video_dict.clear()
+        print("\n\n\ killd signals. Also changed thumbnail and title to blank")
     except psutil.NoSuchProcess:
         return
 
@@ -341,6 +348,7 @@ async def state():
 
 @app.post("/play/file")
 async def play_file(file_path: str = "cache", title: str = None, thumbnail: str = None):
+    global curr_thread
 
     # If any video playing, stop it
     for video_type in State:
@@ -349,16 +357,21 @@ async def play_file(file_path: str = "cache", title: str = None, thumbnail: str 
 
     # Start thread to stream the video and provide a response
     try:
-
+        # waits until the current thread is stopped
+        if (curr_thread is not None):
+                curr_thread.join()
         # check if we are going to play all videos or a single video in the cache
         if file_path == "cache":
+            
+            
 
             # Start a thread to play all videos in the cache
-            threading.Thread(target=handle_cache_play).start()
+            curr_thread = threading.Thread(target=handle_cache_play)
+            curr_thread.start()
 
         else:
             # Start a thread to play a single video in the cache
-            threading.Thread(
+            curr_thread = threading.Thread(
                 target=create_ffmpeg_stream,
                 args=(
                     file_path,
@@ -367,7 +380,8 @@ async def play_file(file_path: str = "cache", title: str = None, thumbnail: str 
                     title,
                     thumbnail,
                 ),
-            ).start()
+            )
+            curr_thread.start()
 
         return {"detail": "Success"}
 
@@ -383,6 +397,7 @@ async def play_file(file_path: str = "cache", title: str = None, thumbnail: str 
 
 @app.post("/play")
 async def play(url: str, loop: bool = False):
+    global curr_thread
     # Decode URL
     url = unquote(url)
 
@@ -396,18 +411,18 @@ async def play(url: str, loop: bool = False):
         # Check the type of URL and start the appropriate thread
         if url_type == UrlType.VIDEO:
             video = YouTube(url)
-            t = threading.Thread(
+            curr_thread = threading.Thread(
                 target=download_and_play_video,
                 args=(url, loop, video.title, video.thumbnail_url),
             )
-            t.start()
+            curr_thread.start()
 
         elif url_type == UrlType.PLAYLIST:
-            t = threading.Thread(
+            curr_thread = threading.Thread(
                 target=handle_playlist,
                 args=(url, loop),
             )
-            t.start()
+            curr_thread.start()
 
         else:
             raise HTTPException(status_code=400, detail="given url is of unknown type")
