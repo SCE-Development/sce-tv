@@ -127,6 +127,8 @@ def create_ffmpeg_stream(
         stderr=subprocess.DEVNULL,
     )
 
+    MetricsHandler.receive_stream_running.set(1)
+
     if None not in [title, thumbnail]:
         current_video_dict["title"] = title
         current_video_dict["thumbnail"] = thumbnail
@@ -149,6 +151,7 @@ def create_ffmpeg_stream(
         interlude_lock.release()
     hls_lock.release()
     logging.info(f"exiting create_ffmpeg_stream with exit code {exit_code}")
+    MetricsHandler.receive_stream_running.set(0)
     return exit_code
 
 
