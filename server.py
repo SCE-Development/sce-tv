@@ -127,7 +127,8 @@ def create_ffmpeg_stream(
         stderr=subprocess.DEVNULL,
     )
 
-    MetricsHandler.receive_stream_running.set(1)
+    if video_type == State.PLAYING:
+        MetricsHandler.receive_stream_running.set(1)
 
     if None not in [title, thumbnail]:
         current_video_dict["title"] = title
@@ -147,11 +148,13 @@ def create_ffmpeg_stream(
         process_dict.pop(video_type)
     current_video_dict.clear()
 
+    if State.PLAYING not in process_dict:
+        MetricsHandler.receive_stream_running.set(0)
+
     if (exit_code == 0 or video_type == State.PLAYING) and play_interlude_after and args.interlude:
         interlude_lock.release()
     hls_lock.release()
     logging.info(f"exiting create_ffmpeg_stream with exit code {exit_code}")
-    MetricsHandler.receive_stream_running.set(0)
     return exit_code
 
 
