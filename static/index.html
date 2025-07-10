@@ -1,164 +1,205 @@
 <!DOCTYPE html>
 <html lang="en">
-
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="index.css">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="index.css" />
     <title>Burger</title>
-</head>
+  </head>
 
-<body>
-    <div style="text-align: center;">
-        <h2 style="text-align: center; color: white;" id="cache_tag" >SCE TV</h2>
-        <div id="interlude">
-            <input type="text" id="url" onchange="OnUrlChange(event, true)" placeholder="PASTE A YOUTUBE LINK FOR EPICNESS">
-            <select id="resolution">
-                <option value="144">144p</option>
-                <option value="240">240p</option>
-                <option value="360">360p</option>
-                <option value="720">720p</option>
-                <option value="1080">1080p</option>
-            </select>
-            <button type="button" id="loop" style="background-color: blue;">Loop Video?</button>
-            <button type="button" id="play" style="background-color: green;">Play</button>
-        </div>
-        <input type="checkbox" id="rate-limiter" style="visibility: hidden;">
-        <div id="playing">
-            <h2>NOW PLAYING:</h2>
-            <button type="button" id="stop" style="background-color:red;" onclick="Stop(event)">Stop</button>
-        </div>
-        <div id="metadata">
-            <h3 id="title"></h3>
-            <img id="thumbnail" style="border-style: solid;border-width: 3px;border-radius: 25px;" width="640">
-        </div>
+  <body>
+    <div style="text-align: center">
+      <h2 style="text-align: center; color: white" id="cache_tag">SCE TV</h2>
+      <div id="interlude">
+        <input
+          type="text"
+          id="url"
+          onchange="OnUrlChange(event, true)"
+          placeholder="PASTE A YOUTUBE LINK FOR EPICNESS"
+        />
+        <select id="resolution">
+          <option value="144">144p</option>
+          <option value="240">240p</option>
+          <option value="360">360p</option>
+          <option value="720">720p</option>
+          <option value="1080">1080p</option>
+        </select>
+        <button type="button" id="loop" style="background-color: blue">
+          Loop Video?
+        </button>
+        <button type="button" id="play" style="background-color: green">
+          Play
+        </button>
+      </div>
+      <input type="checkbox" id="rate-limiter" style="visibility: hidden" />
+      <div id="playing">
+        <h2>NOW PLAYING:</h2>
+        <button
+          type="button"
+          id="stop"
+          style="background-color: red"
+          onclick="Stop(event)"
+        >
+          Stop
+        </button>
+      </div>
+      <div id="metadata">
+        <h3 id="title"></h3>
+        <img
+          id="thumbnail"
+          style="border-style: solid; border-width: 3px; border-radius: 25px"
+          width="640"
+        />
+      </div>
     </div>
     <script>
-        let stateURL = new URL(window.location.pathname + "state", window.location.origin)
-        let stopURL = new URL(window.location.pathname + "stop", window.location.origin)
-        let playButton = document.getElementById("play");
-        let loopButton = document.getElementById("loop");
-        let urlInput = document.getElementById("url");
-        let rateLimiterCheckbox = document.getElementById("rate-limiter");
-        let videoWillLoop = false;
-        playButton.addEventListener("click", Play);
-        loopButton.addEventListener("click", toggleLoopVideo);
-        urlInput.addEventListener("input", OnUrlChange);
+      let stateURL = new URL(
+        window.location.pathname + "state",
+        window.location.origin
+      );
+      let stopURL = new URL(
+        window.location.pathname + "stop",
+        window.location.origin
+      );
+      let playButton = document.getElementById("play");
+      let loopButton = document.getElementById("loop");
+      let urlInput = document.getElementById("url");
+      let rateLimiterCheckbox = document.getElementById("rate-limiter");
+      let videoWillLoop = false;
+      playButton.addEventListener("click", Play);
+      loopButton.addEventListener("click", toggleLoopVideo);
+      urlInput.addEventListener("input", OnUrlChange);
 
-        async function toggleLoopVideo(){
-            videoWillLoop = !videoWillLoop;
-            if(videoWillLoop){
-                loopButton.textContent = "Video will loop!";
-                loopButton.style.backgroundColor="darkblue";
-            } else {
-                loopButton.textContent = "Loop Video?";
-                loopButton.style.backgroundColor="blue";
-            }
+      async function toggleLoopVideo() {
+        videoWillLoop = !videoWillLoop;
+        if (videoWillLoop) {
+          loopButton.textContent = "Video will loop!";
+          loopButton.style.backgroundColor = "darkblue";
+        } else {
+          loopButton.textContent = "Loop Video?";
+          loopButton.style.backgroundColor = "blue";
         }
-        
-        async function Play(e) {
-            e.preventDefault();
-            const url = document.getElementById('url').value;
-            let playURL = new URL(window.location.pathname + "play", window.location.origin)
-            
-            playURL.searchParams.append("url", encodeURIComponent(url))
-            if(videoWillLoop){
-                playURL.searchParams.append("loop", 1)
-            }
+      }
 
-            const response = await fetch(playURL.href, {
-                method: "POST",
-            });
-            const res_json = await response.json();
-            
-            if (res_json["detail"] === "Success") {
-                playButton.textContent = "Success!";
-                playButton.disabled = true;
-                document.getElementById("playing").style.display = "block";
-                setTimeout(() => {
-                    playButton.textContent = "Play";
-                    playButton.disabled = false;
-                }, 2000);
-            }
-            else {
-                alert(res_json["detail"]);
-            }
-        }
-    
-        async function Stop(e) {
-            e.preventDefault();
-            await fetch(stopURL.href, { method: "POST" });
-            document.getElementById("interlude").style.visibility = "visible";
-            document.getElementById("metadata").style.visibility = "hidden";
-            document.getElementById("playing").style.display = "none";
-        }
-        fetch(stateURL.href).then((response) => response.json()).then((json) => {
-            const state = json["state"];
-            if (state === "playing") {
-                document.getElementById("interlude").style.visibility = "hidden";
-				document.getElementById("playing").style.visibility = "visible";
-                document.getElementById('title').innerHTML = json["nowPlaying"]["title"];
-                document.getElementById('thumbnail').src = json["nowPlaying"]["thumbnail"]
-            }
-        })
+      async function Play(e) {
+        e.preventDefault();
+        const url = document.getElementById("url").value;
+        let playURL = new URL(
+          window.location.pathname + "play",
+          window.location.origin
+        );
 
-        // Add a function to navigate to the cache page when clicking on the h2 tag
-        document.getElementById("cache_tag").addEventListener("click", function(){
-            window.location.href = window.location.href + "cache";
+        playURL.searchParams.append("url", encodeURIComponent(url));
+        if (videoWillLoop) {
+          playURL.searchParams.append("loop", 1);
+        }
+
+        const response = await fetch(playURL.href, {
+          method: "POST",
+        });
+        const res_json = await response.json();
+
+        if (res_json["detail"] === "Success") {
+          playButton.textContent = "Success!";
+          playButton.disabled = true;
+          document.getElementById("playing").style.display = "block";
+          //Manually upate the interlude and stop button, or else it won't update unless page is reloaded
+          document.getElementById("interlude").style.visibility = "hidden";
+          setTimeout(async () => {
+            playButton.textContent = "Play";
+            playButton.disabled = false;
+          }, 2000);
+          document.getElementById("playing").style.visibility = "visible";
+        } else {
+          alert(res_json["detail"]);
+        }
+      }
+
+      async function Stop(e) {
+        e.preventDefault();
+        await fetch(stopURL.href, { method: "POST" });
+        document.getElementById("interlude").style.visibility = "visible";
+        document.getElementById("metadata").style.visibility = "hidden";
+        document.getElementById("playing").style.display = "none";
+      }
+      fetch(stateURL.href)
+        .then((response) => response.json())
+        .then((json) => {
+          const state = json["state"];
+          console.log("fetched somehting? " + state);
+          if (state === "playing") {
+            document.getElementById("interlude").style.visibility = "hidden";
+            document.getElementById("playing").style.visibility = "visible";
+            document.getElementById("title").innerHTML =
+              json["nowPlaying"]["title"];
+            document.getElementById("thumbnail").src =
+              json["nowPlaying"]["thumbnail"];
+          }
         });
 
-        async function OnUrlChange(e, override=false) {
-            const url = document.getElementById('url').value;
-            const reg = /https:\/\/www\.youtube\.com\/(playlist|watch)\?(list|v)=\w+/;
-            // If the rate limiter is not checked (or override) and the URL is a valid YouTube URL
-            // Then update the metadata
-            if ( (override || !rateLimiterCheckbox.checked) && reg.test(url) ) {
-                await UpdateMetadata(url);
-            }
+      // Add a function to navigate to the cache page when clicking on the h2 tag
+      document
+        .getElementById("cache_tag")
+        .addEventListener("click", function () {
+          window.location.href = window.location.href + "cache";
+        });
+
+      async function OnUrlChange(e, override = false) {
+        const url = document.getElementById("url").value;
+        const reg =
+          /https:\/\/www\.youtube\.com\/(playlist|watch)\?(list|v)=\w+/;
+        // If the rate limiter is not checked (or override) and the URL is a valid YouTube URL
+        // Then update the metadata
+        if ((override || !rateLimiterCheckbox.checked) && reg.test(url)) {
+          await UpdateMetadata(url);
         }
+      }
 
-        async function UpdateMetadata(url) {
-            // Fetch the metadata for the video and update the UI
-            let metadataURL = new URL(window.location.pathname + "metadata", window.location.origin)
-            metadataURL.searchParams.append("url", encodeURIComponent(url))
-            fetch(metadataURL.href)
-                .then(response => {
-                    // If the response is not OK, throw an error
-                    if (!response.ok)
-                        throw new Error("Invalid URL!");
-                    return response.json();
-                })
-                .then(data => {
-                    // If the data is valid, update the UI
-                    document.getElementById("metadata").style.visibility = "visible";
-                    document.getElementById('title').innerHTML = data["title"];
-                    document.getElementById('thumbnail').src = data["thumbnail"];
-                    rateLimiterCheckbox.checked = true;
-                })
-                .catch(err => {
-                    // If there is an error, show an alert and hide the playing div
-                    document.getElementById("metadata").style.visibility = "hidden";
-                    alert(err);
-                });
-        }
+      async function UpdateMetadata(url) {
+        // Fetch the metadata for the video and update the UI
+        let metadataURL = new URL(
+          window.location.pathname + "metadata",
+          window.location.origin
+        );
+        metadataURL.searchParams.append("url", encodeURIComponent(url));
+        fetch(metadataURL.href)
+          .then((response) => {
+            // If the response is not OK, throw an error
+            if (!response.ok) throw new Error("Invalid URL!");
+            return response.json();
+          })
+          .then((data) => {
+            // If the data is valid, update the UI
+            document.getElementById("metadata").style.visibility = "visible";
+            document.getElementById("title").innerHTML = data["title"];
+            document.getElementById("thumbnail").src = data["thumbnail"];
+            rateLimiterCheckbox.checked = true;
+          })
+          .catch((err) => {
+            // If there is an error, show an alert and hide the playing div
+            document.getElementById("metadata").style.visibility = "hidden";
+            alert(err);
+          });
+      }
 
-
-        fetch(stateURL.href).then((response) => response.json()).then((json) => {
-            const state = json["state"];
-            console.log(json);
-            if (state === "interlude") {
-                document.getElementById("metadata").style.visibility = "hidden";
-                document.getElementById("playing").style.display = "none";
-            }
-            else {
-                document.getElementById("metadata").style.visibility = "visible";
-                document.getElementById("playing").style.display = "block";
-                document.getElementById("interlude").style.visibility = "hidden";
-                document.getElementById('title').innerHTML = json["nowPlaying"]["title"];
-                document.getElementById('thumbnail').src = json["nowPlaying"]["thumbnail"]
-            }
-        })
+      fetch(stateURL.href)
+        .then((response) => response.json())
+        .then((json) => {
+          const state = json["state"];
+          console.log(json);
+          if (state === "interlude") {
+            document.getElementById("metadata").style.visibility = "hidden";
+            document.getElementById("playing").style.display = "none";
+          } else {
+            document.getElementById("metadata").style.visibility = "visible";
+            document.getElementById("playing").style.display = "block";
+            document.getElementById("interlude").style.visibility = "hidden";
+            document.getElementById("title").innerHTML =
+              json["nowPlaying"]["title"];
+            document.getElementById("thumbnail").src =
+              json["nowPlaying"]["thumbnail"];
+          }
+        });
     </script>
-</body>
-
+  </body>
 </html>
