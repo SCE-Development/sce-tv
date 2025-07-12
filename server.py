@@ -127,6 +127,7 @@ def create_ffmpeg_stream(
         stderr=subprocess.DEVNULL,
     )
 
+    current_video_dict.clear()  
     if None not in [title, thumbnail]:
         current_video_dict["title"] = title
         current_video_dict["thumbnail"] = thumbnail
@@ -143,7 +144,6 @@ def create_ffmpeg_stream(
     ).inc()
     if video_type in process_dict:
         process_dict.pop(video_type)
-    current_video_dict.clear()
 
     if (exit_code == 0 or video_type == State.PLAYING) and play_interlude_after and args.interlude:
         interlude_lock.release()
