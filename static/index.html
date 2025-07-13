@@ -75,6 +75,9 @@
                 playButton.textContent = "Success!";
                 playButton.disabled = true;
                 document.getElementById("playing").style.display = "block";
+                //Manually upate the interlude and stop button, or else it won't update unless page is reloaded
+                document.getElementById("interlude").style.visibility = "hidden";
+                document.getElementById("playing").style.visibility="visible";
                 setTimeout(() => {
                     playButton.textContent = "Play";
                     playButton.disabled = false;
