@@ -73,10 +73,11 @@ class Metrics(enum.Enum):
         ["endpoint"],
     )
 
-    STREAM_RUNNING = (
-        "receive_stream_running",
-        "Indicates whether the received stream is running (1=running, 0=stopped)",
-        prometheus_client.Gauge
+    STREAM_STATE = (
+        "stream_state",
+        "Indicates whether the given stream type is running (1=running, 0=stopped)",
+        prometheus_client.Gauge,
+        ["video_type"],
     )
 
     def __init__(self, title, description, prometheus_type, labels=()):
