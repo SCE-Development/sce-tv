@@ -73,6 +73,13 @@ class Metrics(enum.Enum):
         ["endpoint"],
     )
 
+    STREAM_STATE = (
+        "stream_state",
+        "Indicates whether the given stream type is running (1=running, 0=stopped)",
+        prometheus_client.Gauge,
+        ["video_type"],
+    )
+
     def __init__(self, title, description, prometheus_type, labels=()):
         # we use the above default value for labels because it matches what's used
         # in the prometheus_client library's metrics constructor, see

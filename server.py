@@ -134,6 +134,7 @@ def create_ffmpeg_stream(
 
     process_dict[video_type] = process.pid
     MetricsHandler.streams_count.labels(video_type=video_type.value).inc(amount=1)
+    MetricsHandler.stream_state.labels(video_type=video_type.value).set(1)
     # the below function returns 0 if the video ended on its own
     # 137, 1
     exit_code = process.wait()
@@ -144,6 +145,8 @@ def create_ffmpeg_stream(
     ).inc()
     if video_type in process_dict:
         process_dict.pop(video_type)
+
+    MetricsHandler.stream_state.labels(video_type=video_type.value).set(0)
 
     if (exit_code == 0 or video_type == State.PLAYING) and play_interlude_after and args.interlude:
         interlude_lock.release()
