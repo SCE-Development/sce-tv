@@ -3,3 +3,7 @@ uvicorn==0.22.0
 py-grpc-prometheus==0.7.0
 psutil==5.9.8
 pytubefix==9.1.1
+
+pafy
+python-vlc
+youtube-dl==2020.12.2
