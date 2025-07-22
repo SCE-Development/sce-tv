@@ -1,0 +1,21 @@
+groups:
+  - name: alert_rules
+    interval: 1s
+    rules:
+      - alert: stream_not_running
+        expr: |
+          time() - receive_stream_running == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Raspberry pi has not been running" 
+          description: 'Raspberry pi has not been running for "{{value | printf "$.0f" }}" seconds'
+      - alert: new_stream_running
+        expr: stream_state{video_type="playing"} == 1 
+        for: 1s
+        labels:
+          severity: info
+        annotations:
+          summary: New stream running" 
+
