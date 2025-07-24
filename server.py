@@ -95,6 +95,11 @@ def create_ffmpeg_stream(
     if video_path is None:
         logging.info("video_path is None. ffmpeg_stream cancelled.")
         return 2
+    
+    if (stop_all_videos()):
+
+        time.sleep(5)
+
     # Create a subprocess to stream the video using FFmpeg
     command = [
         "ffmpeg",
@@ -209,8 +214,6 @@ def download_and_play_video(
     if video_path is None:
         video_cache.add(url)
         video_path = video_cache.find(Cache.get_video_id(url))
-    if (stop_all_videos()):
-        time.sleep(5)
     # [edwaddle] also add the time.sleep here, if the above return value was true
 
     return create_ffmpeg_stream(
@@ -277,6 +280,7 @@ def _get_url_type(url: str):
 
 
 def handle_cache_play():
+
     # Get all the videos in the cache
     cache_videos = video_cache.video_id_to_path
 
@@ -366,10 +370,6 @@ async def play_file(file_path: str = "cache", title: str = None, thumbnail: str 
     # [edwaddle] then do a time.sleep for 5 seconds directly under the function call
     # [edwaddle] call the time.sleep here if the above return value was true.
     # [edwaddle] see other comments regarding stop_all_videos returning a boolean 
-    # If any video playing, stop it
-    if (stop_all_videos()):
-        time.sleep(5)
-
     # Start thread to stream the video and provide a response
     try:
 
@@ -563,6 +563,8 @@ app.mount("/", StaticFiles(directory="static", html=True), name="static")
 # this time __name__ == "server". the separate __name__ if statement
 # is so a thread starts up the interlude after the server is ready to go
 if __name__ == "server":
+    #ensure that the previous threads are done ending, before it tries to do anything
+
     MetricsHandler.init()
     MetricsHandler.cache_size.set(0)
     MetricsHandler.cache_size_bytes.set(0)
@@ -571,10 +573,11 @@ if __name__ == "server":
     # Start up interlude by default
     if args.interlude:
         threading.Thread(target=handle_interlude).start()
+
     # Ensure video folder exists
     if not os.path.exists(args.videopath):
         os.makedirs(args.videopath)
-
+    
     # if the cache file is specified, populate the cache from the file
     if args.cache_state_file:
         video_cache.populate_cache()
