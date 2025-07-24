@@ -59,9 +59,9 @@
         async function Play(e) {
             e.preventDefault();
             const url = document.getElementById('url').value;
-            let playURL = new URL(window.location.pathname + "play", window.location.origin)
-            
+            let playURL = new URL(window.location.pathname + "play", window.location.origin) 
             playURL.searchParams.append("url", encodeURIComponent(url))
+            playButton.textContent = "Success!";
             if(videoWillLoop){
                 playURL.searchParams.append("loop", 1)
             }
@@ -72,7 +72,7 @@
             const res_json = await response.json();
             
             if (res_json["detail"] === "Success") {
-                playButton.textContent = "Success!";
+                // playButton.textContent = "Success!";
                 playButton.disabled = true;
                 document.getElementById("playing").style.display = "block";
                 //Manually upate the urlInput and stop button, or else it won't update unless page is reloaded
@@ -85,6 +85,7 @@
             }
             else {
                 alert(res_json["detail"]);
+                playButton.textContent = "Play";
             }
         }
     
