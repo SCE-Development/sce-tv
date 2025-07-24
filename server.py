@@ -280,7 +280,6 @@ def _get_url_type(url: str):
 
 
 def handle_cache_play():
-
     # Get all the videos in the cache
     cache_videos = video_cache.video_id_to_path
 
@@ -563,8 +562,6 @@ app.mount("/", StaticFiles(directory="static", html=True), name="static")
 # this time __name__ == "server". the separate __name__ if statement
 # is so a thread starts up the interlude after the server is ready to go
 if __name__ == "server":
-    #ensure that the previous threads are done ending, before it tries to do anything
-
     MetricsHandler.init()
     MetricsHandler.cache_size.set(0)
     MetricsHandler.cache_size_bytes.set(0)
@@ -573,11 +570,10 @@ if __name__ == "server":
     # Start up interlude by default
     if args.interlude:
         threading.Thread(target=handle_interlude).start()
-
     # Ensure video folder exists
     if not os.path.exists(args.videopath):
         os.makedirs(args.videopath)
-    
+
     # if the cache file is specified, populate the cache from the file
     if args.cache_state_file:
         video_cache.populate_cache()
