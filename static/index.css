@@ -54,11 +54,11 @@ input {
     width: 100%;
 }
 
-/* #cache_tag{
+#cache_tag{
     text-align: center; 
     color: white; 
     margin: 0;
-} */
+}
 
 #show-logs-btn{
     height: 2.2em; 
@@ -71,14 +71,13 @@ input {
     margin-left: 10px;
 }
 
-#cache_tag{
-    width: 150px;
-    height: 150px;
-    margin-right: 10px;
+#logo{
+    width: 60px;
+    height: 60px;
 }
 
 .card {
-    background: #295d7a;
+    background: hsla(0, 0%, 31%, 0.7);
     border-radius: 12px;
     box-shadow: 0 4px 16px rgba(0,0,0,0.10);
     padding: 32px 24px;

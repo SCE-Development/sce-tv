@@ -16,9 +16,8 @@
         <div class="card">
             <div style="display: flex; justify-content: center; align-items: center; flex-direction: column;">
                 <div style="display: flex; justify-content: center; align-items: center; padding-bottom: 10px;">
-                    <!-- no one dare remove this div -->
-                    <div style="color: #295d7a">Matt here..</div>
-                    <img src="SCE-TV-Logo.png" alt="SCE TV Logo" id="cache_tag">
+                    <img src="SCE-TV-Logo.png" alt="SCE TV Logo" id="logo">
+                     <h2 id="cache_tag">SCE TV</h2>
                     <button id="show-logs-btn">Show Logs</button>
                 </div>
             </div>
@@ -107,7 +106,7 @@
                 playButton.disabled = true;
                 document.getElementById("playing").style.display = "block";
                 //Manually upate the urlInput and stop button, or else it won't update unless page is reloaded
-                document.getElementById("urlInput").style.visibility = "hidden";
+                // document.getElementById("urlInput").style.visibility = "hidden";
                 document.getElementById("playing").style.visibility="visible";
                 setTimeout(() => {
                     playButton.textContent = "Play";
@@ -123,7 +122,7 @@
         async function Stop(e) {
             e.preventDefault();
             await fetch(stopURL.href, { method: "POST" });
-            document.getElementById("urlInput").style.visibility = "visible";
+            // document.getElementById("urlInput").style.visibility = "visible";
             document.getElementById("metadata").style.visibility = "hidden";
             document.getElementById("playing").style.display = "none";
         }
