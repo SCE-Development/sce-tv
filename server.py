@@ -452,7 +452,7 @@ async def fake_stream():
     yield f"data: {message}\n\n"
 @app.get("/sseTest")
 async def sse_test():
-    return StreamingResponse(fake_stream(), media_type="text/event-stream")
+    return StreamingResponse(fake_stream(), media_type="text/event-stream", headers={"X-Accel-Buffering": "no"})
     
 
 
