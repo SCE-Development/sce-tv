@@ -13,15 +13,12 @@
        
         
         <div style="display: flex; justify-content: center; align-items: center; flex-direction: column;">
-            <div id="logs-box" style="display: none; background: black; color: white; width: 100%; max-width: 700px; margin: 0 auto 8px auto; 
-            padding: 12px; border-radius: 8px; min-height: 120px; height: 300px; text-align: left; display: flex; flex-direction: column; justify-content: flex-end; overflow-y: auto;">
-                <div id="logs-content" style="display: flex; flex-direction: column; justify-content: flex-end; width: 100%;">
-                    
-                </div>
+            <div id="logs-box">
+                <div id="logs-content"></div>
             </div>
             <div style="display: flex; justify-content: center; align-items: center; padding-bottom: 10px; padding-top: 10px;">
-                <h2 style="text-align: center; color: white; margin: 0;" id="cache_tag">SCE TV</h2>
-                <button id="show-logs-btn" style="height: 2.2em; background-color: blue; color: white; border: none; border-radius: 4px; padding: 8px 16px; cursor: pointer; margin-left: 10px;">Show Logs</button>
+                <h2 id="cache_tag">SCE TV</h2>
+                <button id="show-logs-btn">Show Logs</button>
             </div>
         </div>
         
@@ -211,11 +208,8 @@
             logEntry.textContent = `${timestamp}: ${message}`;
             logsContent.appendChild(logEntry);
             // Scroll to bottom
-            logsContent.parentElement.scrollTop = logsContent.parentElement.scrollHeight;
+            logsContent.scrollTop = logsContent.scrollHeight;
         }
-        // Example usage:
-        // addLogMessage('Logs will appear here...');
-        // You can call addLogMessage from anywhere to add logs.
     </script>
 </body>
 

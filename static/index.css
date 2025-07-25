@@ -32,3 +32,43 @@ input {
 #playing {
 	visibility: hidden;
 }
+
+#logs-box {
+    display: none; 
+    background: black; 
+    color: white; 
+    width: 100%; 
+    max-width: 700px; 
+    margin: 0 auto 8px auto;     
+    padding: 12px; 
+    border-radius: 8px; 
+    text-align: left; 
+    display: flex; 
+    flex-direction: column; 
+    justify-content: flex-end; 
+}
+
+#logs-content {
+    height: 200px; 
+    overflow-y: auto;
+    display: flex; 
+    flex-direction: column; 
+    width: 100%;
+}
+
+#cache_tag{
+    text-align: center; 
+    color: white; 
+    margin: 0;
+}
+
+#show-logs-btn{
+    height: 2.2em; 
+    background-color: blue; 
+    color: white; 
+    border: none; 
+    border-radius: 4px; 
+    padding: 8px 16px; 
+    cursor: pointer; 
+    margin-left: 10px;
+}
