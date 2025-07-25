@@ -51,7 +51,6 @@
         eventSource.onmessage = (event) => {
             const message = JSON.parse(event.data);
             console.log(message);
-            playButton.textContent = message.text;
         };
 
         async function toggleLoopVideo(){
