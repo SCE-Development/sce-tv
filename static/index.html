@@ -10,39 +10,46 @@
 
 <body>
     <div style="text-align: center; position: relative;">
-       
-        
-        <div style="display: flex; justify-content: center; align-items: center; flex-direction: column;">
-            <div id="logs-box">
-                <div id="logs-content"></div>
-            </div>
-            <div style="display: flex; justify-content: center; align-items: center; padding-bottom: 10px; padding-top: 10px;">
-                <h2 id="cache_tag">SCE TV</h2>
-                <button id="show-logs-btn">Show Logs</button>
-            </div>
+        <div id="logs-box">
+            <div id="logs-content"></div>
         </div>
+        <div class="card">
+            <div style="display: flex; justify-content: center; align-items: center; flex-direction: column;">
+                <div style="display: flex; justify-content: center; align-items: center; padding-bottom: 10px;">
+                    <!-- no one dare remove this div -->
+                    <div style="color: #295d7a">Matt here..</div>
+                    <img src="SCE-TV-Logo.png" alt="SCE TV Logo" id="cache_tag">
+                    <button id="show-logs-btn">Show Logs</button>
+                </div>
+            </div>
+            
         
-    
-        <div id="urlInput">
-            <input type="text" id="url" onchange="OnUrlChange(event, true)" placeholder="PASTE A YOUTUBE LINK FOR EPICNESS">
-            <select id="resolution">
-                <option value="144">144p</option>
-                <option value="240">240p</option>
-                <option value="360">360p</option>
-                <option value="720">720p</option>
-                <option value="1080">1080p</option>
-            </select>
-            <button type="button" id="loop" style="background-color: blue;">Loop Video?</button>
-            <button type="button" id="play" style="background-color: green;">Play</button>
+            <div id="urlInput">
+                <input type="text" id="url" onchange="OnUrlChange(event, true)" placeholder="PASTE A YOUTUBE LINK FOR EPICNESS">
+                <select id="resolution">
+                    <option value="144">144p</option>
+                    <option value="240">240p</option>
+                    <option value="360">360p</option>
+                    <option value="720">720p</option>
+                    <option value="1080">1080p</option>
+                </select>
+                <button type="button" id="loop" style="background-color: blue;">Loop Video?</button>
+                <button type="button" id="play" style="background-color: green;">Play</button>
+            </div>
         </div>
         <input type="checkbox" id="rate-limiter" style="visibility: hidden;">
         <div id="playing">
-            <h2>NOW PLAYING:</h2>
-            <button type="button" id="stop" style="background-color:red;" onclick="Stop(event)">Stop</button>
-        </div>
-        <div id="metadata">
-            <h3 id="title"></h3>
-            <img id="thumbnail" style="border-style: solid;border-width: 3px;border-radius: 25px;" width="640">
+            <div class="card">
+                <div id="metadata">
+                    <div style="display: flex; align-items: center; justify-content: center;">
+                        <h2>NOW PLAYING: </h2>
+                        <h2 id="title"></h2>
+                    </div>
+                    <button type="button" id="stop" style="background-color:red;" onclick="Stop(event)">Stop</button>
+                    <img id="thumbnail" style="border-style: solid;border-width: 3px;border-radius: 25px;" width="640">
+                </div>
+
+            </div>
         </div>
     </div>
     <script>
@@ -204,7 +211,7 @@
             const logsContent = document.getElementById('logs-content');
             const logEntry = document.createElement('div');
             const now = new Date();
-            const timestamp = now.toLocaleTimeString();
+            const timestamp = now.toISOString();
             logEntry.textContent = `${timestamp}: ${message}`;
             logsContent.appendChild(logEntry);
             // Scroll to bottom

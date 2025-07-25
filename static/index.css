@@ -37,15 +37,13 @@ input {
     display: none; 
     background: black; 
     color: white; 
-    width: 100%; 
-    max-width: 700px; 
+    width: 700px; 
     margin: 0 auto 8px auto;     
     padding: 12px; 
     border-radius: 8px; 
     text-align: left; 
     display: flex; 
     flex-direction: column; 
-    justify-content: flex-end; 
 }
 
 #logs-content {
@@ -56,11 +54,11 @@ input {
     width: 100%;
 }
 
-#cache_tag{
+/* #cache_tag{
     text-align: center; 
     color: white; 
     margin: 0;
-}
+} */
 
 #show-logs-btn{
     height: 2.2em; 
@@ -71,4 +69,23 @@ input {
     padding: 8px 16px; 
     cursor: pointer; 
     margin-left: 10px;
+}
+
+#cache_tag{
+    width: 150px;
+    height: 150px;
+    margin-right: 10px;
+}
+
+.card {
+    background: #295d7a;
+    border-radius: 12px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.10);
+    padding: 32px 24px;
+    width: 700px;
+    min-height: 100px;
+    margin: 40px auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
 }
