@@ -36,7 +36,8 @@ logging.basicConfig(
     datefmt="%Y-%m-%dT%H:%M:%S",
     level=logging.INFO,
 )
-
+logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+logging.getLogger("uvicorn.error").setLevel(logging.WARNING)
 
 # Enum for the state of the video being processed
 class State(enum.Enum):
@@ -126,9 +127,11 @@ def create_ffmpeg_stream(
         command[2:2] = ["-stream_loop", "-1"]
     process = subprocess.Popen(
         command,
-        stdout=subprocess.DEVNULL,
-        stdin=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        # stdout=subprocess.PIPE,
+        # stdin=subprocess.DEVNULL,
+        # stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
     )
 
     current_video_dict.clear()  
