@@ -10,6 +10,8 @@ import logging
 import ssl
 import time
 from pathlib import Path
+import asyncio  # Add this import for async queues
+from typing import List  # Add this import for type hinting
 
 ssl._create_default_https_context = ssl._create_stdlib_context
 
@@ -141,6 +143,7 @@ def create_ffmpeg_stream(
     # 137, 1
     exit_code = process.wait()
     logging.info(f"process {process.pid} started for {video_type.value} video: {video_path}")
+    write_log_to_client(f"Process {process.pid} started for {video_type.value} video: {video_path}")
 
     MetricsHandler.subprocess_count.labels(
         exit_code=exit_code,
@@ -153,13 +156,16 @@ def create_ffmpeg_stream(
     if (exit_code == 0 or video_type == State.PLAYING) and play_interlude_after and args.interlude:
         interlude_lock.release()
     hls_lock.release()
-    logging.info(f"exiting create_ffmpeg_stream with exit code {exit_code}")
+    logging.info(f"process {process.pid} exited with code {exit_code}")
+    write_log_to_client(f"Process {process.pid} exited with code {exit_code}")
+
     return exit_code
 
 
 # stop the video by type
 def stop_video_by_type(video_type: State):
     if video_type in process_dict:
+        write_log_to_client(f"Stopped {video_type} video")
         kill_child_processes(process_dict[video_type])
         process_dict.pop(video_type)
 
@@ -186,7 +192,7 @@ def handle_interlude():
     while True:
         # Wait for the lock to be released
         interlude_lock.acquire()
-
+        write_log_to_client("Interlude thread unblocked...")
         # Check if the interlude stream is already running
         create_ffmpeg_stream(args.interlude, State.INTERLUDE, loop=True)
 
@@ -197,6 +203,7 @@ def download_next_video_in_list(playlist, current_index):
         next_index = 0
     video_url = playlist[next_index]
     if video_cache.find(Cache.get_video_id(video_url)) is None:
+        write_log_to_client(f"Downloading next video in playlist: {video_url}")
         video_cache.add(video_url)
 
 
@@ -205,8 +212,10 @@ def download_and_play_video(
 ):
     video_path = video_cache.find(Cache.get_video_id(url))
     if video_path is None:
+        write_log_to_client(f"Downloading {url} to disk")
         video_cache.add(url)
         video_path = video_cache.find(Cache.get_video_id(url))
+        write_log_to_client(f"Downloaded {url} to {video_path}")
     stop_all_videos()
     return create_ffmpeg_stream(
         video_path,
@@ -346,9 +355,63 @@ def _clean_hls_dir():
     for f in hls_dir.glob("*.ts"):
         f.unlink(missing_ok=True)
 
+# --- SSE Log Broadcasting Integration ---
+
+# Sample default responses
+default_get_response = {
+    "message": "Default GET response"
+}
+
+default_post_response = {
+    "message": "Default POST response"
+}
+
+# List of queues for connected clients
+clients: List[asyncio.Queue] = []
+
+@app.get("/events")
+async def events(request: Request):
+    """
+    SSE endpoint. Clients connect here to receive events.
+    """
+    client_queue = asyncio.Queue()
+    clients.append(client_queue)
+
+    async def event_generator():
+        try:
+            while True:
+                if await request.is_disconnected():
+                    break
+                message = await client_queue.get()
+                yield f"data: {json.dumps(message)}\n\n"
+        finally:
+            clients.remove(client_queue)
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+def write_log_to_client(message: str):
+
+    response = {
+        "message": message,
+    }
+
+    for queue in clients:
+        queue.put_nowait(response)
+
+# Example endpoint to trigger log broadcast
+@app.post("/log")
+async def log_event(request: Request):
+    data = await request.json()
+    request_type = data.get("requestType", "POST")
+    response_data = data.get("responseData", {})
+    write_log_to_client("I HAVE A ")
+    return {"message": "Log sent to clients"}
+
 @app.get("/state")
 async def state():
     result = {"state": State.INTERLUDE}
+    write_log_to_client("I HAVE A STATE")
     if State.PLAYING in process_dict:
         result = {"state": State.PLAYING, "nowPlaying": current_video_dict}
     return result
@@ -398,7 +461,7 @@ async def play_file(file_path: str = "cache", title: str = None, thumbnail: str 
 @app.post("/play")
 async def play(url: str, loop: bool = False):
     global buttonMsg
-    buttonMsg = "Processing"
+    write_log_to_client("PROCESSING REQUEST")
     # Decode URL
     url = unquote(url)
 
@@ -429,7 +492,6 @@ async def play(url: str, loop: bool = False):
             raise HTTPException(status_code=400, detail="given url is of unknown type")        
         # Update Metrics
         MetricsHandler.video_count.inc()
-        buttonMsg = "Success"
         return {"detail": "Success"}
 
     # If download is unsuccessful, give response and reason
@@ -445,12 +507,13 @@ async def play(url: str, loop: bool = False):
         logging.exception(e)
         raise HTTPException(status_code=500, detail="check logs")
     
-async def fake_stream():
-    message = json.dumps({"text": f"{buttonMsg}"})
-    yield f"data: {message}\n\n"
-@app.get("/sseTest")
-async def sse_test():
-    return StreamingResponse(fake_stream(), media_type="text/event-stream")
+# async def fake_stream():
+#     message = json.dumps({"text": f"{buttonMsg}"})
+#     yield f"data: {message}\n\n"
+#     time.sleep(1)
+# @app.get("/sseTest")
+# async def sse_test():
+#     return StreamingResponse(fake_stream(), media_type="text/event-stream")
     
 
 

@@ -46,10 +46,11 @@
         urlInput.addEventListener("input", OnUrlChange);
 
         console.log("SSE Test: Listening for messages...");
-        const eventSource = new EventSource(new URL(window.location.pathname + "sseTest", window.location.origin).href);
+        const eventSource = new EventSource(new URL(window.location.pathname + "events", window.location.origin).href);
         console.log("SSE Test: EventSource created");
         eventSource.onmessage = (event) => {
             const message = JSON.parse(event.data);
+            console.log(message);
             playButton.textContent = message.text;
         };
 
