@@ -14,7 +14,7 @@ from pathlib import Path
 ssl._create_default_https_context = ssl._create_stdlib_context
 
 from fastapi import FastAPI, HTTPException, Response, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pytubefix import YouTube, Playlist
@@ -63,6 +63,8 @@ interlude_lock = threading.Lock()
 hls_lock = threading.Lock()
 
 args = get_args()
+
+buttonMsg = "Play"
 
 # Create a cache object to store video files, initializing it with the file path specified in the command-line arguments or configuration settings. This instance is used to cache downloaded videos.
 video_cache = Cache(file_path=args.videopath, cache_file=args.cache_state_file)
@@ -393,9 +395,12 @@ async def play_file(file_path: str = "cache", title: str = None, thumbnail: str 
     #     if args.interlude:
     #         interlude_lock.release()
 
-
 @app.post("/play")
 async def play(url: str, loop: bool = False):
+    global buttonMsg
+    buttonMsg = "Processing"
+    for i in range(50):
+        time.sleep(1)
     # Decode URL
     url = unquote(url)
 
@@ -423,9 +428,10 @@ async def play(url: str, loop: bool = False):
             t.start()
 
         else:
-            raise HTTPException(status_code=400, detail="given url is of unknown type")
+            raise HTTPException(status_code=400, detail="given url is of unknown type")        
         # Update Metrics
         MetricsHandler.video_count.inc()
+        buttonMsg = "Success"
         return {"detail": "Success"}
 
     # If download is unsuccessful, give response and reason
@@ -440,6 +446,14 @@ async def play(url: str, loop: bool = False):
     except Exception as e:
         logging.exception(e)
         raise HTTPException(status_code=500, detail="check logs")
+    
+async def fake_stream():
+    message = json.dumps({"text": f"{buttonMsg}"})
+    yield f"data: {message}\n\n"
+@app.get("/sseTest")
+async def sse_test():
+    return StreamingResponse(fake_stream(), media_type="text/event-stream")
+    
 
 
 @app.get("/metadata")
@@ -474,6 +488,8 @@ def metadata(url: str):
 
 @app.post("/stop")
 async def stop():
+    global buttonMsg
+    buttonMsg = "Play"
     current_video_dict.clear()
     # Check if there is a video playing to stop
     if State.PLAYING in process_dict:

@@ -45,6 +45,14 @@
         loopButton.addEventListener("click", toggleLoopVideo);
         urlInput.addEventListener("input", OnUrlChange);
 
+        console.log("SSE Test: Listening for messages...");
+        const eventSource = new EventSource(new URL(window.location.pathname + "sseTest", window.location.origin).href);
+        console.log("SSE Test: EventSource created");
+        eventSource.onmessage = (event) => {
+            const message = JSON.parse(event.data);
+            playButton.textContent = message.text;
+        };
+
         async function toggleLoopVideo(){
             videoWillLoop = !videoWillLoop;
             if(videoWillLoop){
@@ -61,7 +69,7 @@
             const url = document.getElementById('url').value;
             let playURL = new URL(window.location.pathname + "play", window.location.origin) 
             playURL.searchParams.append("url", encodeURIComponent(url))
-            playButton.textContent = "Success!";
+            // playButton.textContent = "Success!";
             if(videoWillLoop){
                 playURL.searchParams.append("loop", 1)
             }
@@ -72,7 +80,7 @@
             const res_json = await response.json();
             
             if (res_json["detail"] === "Success") {
-                // playButton.textContent = "Success!";
+                playButton.textContent = "Success!";
                 playButton.disabled = true;
                 document.getElementById("playing").style.display = "block";
                 //Manually upate the urlInput and stop button, or else it won't update unless page is reloaded
