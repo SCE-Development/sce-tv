@@ -399,8 +399,6 @@ async def play_file(file_path: str = "cache", title: str = None, thumbnail: str 
 async def play(url: str, loop: bool = False):
     global buttonMsg
     buttonMsg = "Processing"
-    for i in range(50):
-        time.sleep(1)
     # Decode URL
     url = unquote(url)
 
@@ -452,7 +450,7 @@ async def fake_stream():
     yield f"data: {message}\n\n"
 @app.get("/sseTest")
 async def sse_test():
-    return StreamingResponse(fake_stream(), media_type="text/event-stream", headers={"X-Accel-Buffering": "no"})
+    return StreamingResponse(fake_stream(), media_type="text/event-stream")
     
 
 
