@@ -324,7 +324,7 @@ def run_hls_stream():
             ffmpeg_cmd,
             stdout=subprocess.DEVNULL,
             stdin=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
         )
         logging.info(f"HLS process started with pid {proc.pid}")
         # start the logging thread (non-blocking)
