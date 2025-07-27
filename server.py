@@ -161,8 +161,8 @@ def create_ffmpeg_stream(
 
 
 # stop the video by type
-# [edwaddle] have stop_video_by_type return true if kill_child_processes was called
-# [edwaddle] else have it return false
+# have stop_video_by_type return true if kill_child_processes was called
+# else have it return false
 def stop_video_by_type(video_type: State):
     if video_type in process_dict:
         kill_child_processes(process_dict[video_type])
@@ -170,7 +170,7 @@ def stop_video_by_type(video_type: State):
         return True
     return False
 
-# [edwaddle] stop_all_videos should also return a boolean, from what stop_video_by_type returned
+#stop_all_videos should also return a boolean, from what stop_video_by_type returned
 def stop_all_videos():
     return stop_video_by_type(State.INTERLUDE) or stop_video_by_type(State.PLAYING)
     
@@ -214,7 +214,6 @@ def download_and_play_video(
     if video_path is None:
         video_cache.add(url)
         video_path = video_cache.find(Cache.get_video_id(url))
-    # [edwaddle] also add the time.sleep here, if the above return value was true
 
     return create_ffmpeg_stream(
         video_path,
@@ -364,12 +363,6 @@ async def state():
 
 @app.post("/play/file")
 async def play_file(file_path: str = "cache", title: str = None, thumbnail: str = None):
-
-    # [edwaddle] call stop_all_videos instead,
-    # [edwaddle] then do a time.sleep for 5 seconds directly under the function call
-    # [edwaddle] call the time.sleep here if the above return value was true.
-    # [edwaddle] see other comments regarding stop_all_videos returning a boolean 
-    # Start thread to stream the video and provide a response
     try:
 
         # check if we are going to play all videos or a single video in the cache
