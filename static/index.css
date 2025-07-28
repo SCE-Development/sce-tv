@@ -71,11 +71,6 @@ input {
     margin-left: 10px;
 }
 
-#logo{
-    width: 60px;
-    height: 60px;
-}
-
 .card {
     background: hsla(0, 0%, 31%, 0.7);
     border-radius: 12px;
