@@ -10,11 +10,13 @@ import logging
 import ssl
 import time
 from pathlib import Path
+import asyncio  # Add this import for async queues
+from typing import List  # Add this import for type hinting
 
 ssl._create_default_https_context = ssl._create_stdlib_context
 
 from fastapi import FastAPI, HTTPException, Response, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pytubefix import YouTube, Playlist
@@ -34,7 +36,8 @@ logging.basicConfig(
     datefmt="%Y-%m-%dT%H:%M:%S",
     level=logging.INFO,
 )
-
+logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+logging.getLogger("uvicorn.error").setLevel(logging.WARNING)
 
 # Enum for the state of the video being processed
 class State(enum.Enum):
@@ -63,6 +66,8 @@ interlude_lock = threading.Lock()
 hls_lock = threading.Lock()
 
 args = get_args()
+
+buttonMsg = "Play"
 
 # Create a cache object to store video files, initializing it with the file path specified in the command-line arguments or configuration settings. This instance is used to cache downloaded videos.
 video_cache = Cache(file_path=args.videopath, cache_file=args.cache_state_file)
@@ -127,9 +132,11 @@ def create_ffmpeg_stream(
         command[2:2] = ["-stream_loop", "-1"]
     process = subprocess.Popen(
         command,
-        stdout=subprocess.DEVNULL,
-        stdin=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        # stdout=subprocess.PIPE,
+        # stdin=subprocess.DEVNULL,
+        # stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
     )
 
     current_video_dict.clear()  
@@ -143,8 +150,9 @@ def create_ffmpeg_stream(
     MetricsHandler.stream_state.labels(video_type=video_type.value).set(1)
     # the below function returns 0 if the video ended on its own
     # 137, 1
-    exit_code = process.wait()
     logging.info(f"process {process.pid} exited with code {exit_code}")
+    write_log_to_client(f"Process {process.pid} started for {video_type.value} video: {video_path}")
+    exit_code = process.wait()
 
     MetricsHandler.subprocess_count.labels(
         exit_code=exit_code,
@@ -157,6 +165,9 @@ def create_ffmpeg_stream(
     if (exit_code == 0 or video_type == State.PLAYING) and play_interlude_after and args.interlude:
         interlude_lock.release()
     hls_lock.release()
+    logging.info(f"process {process.pid} exited with code {exit_code}")
+    write_log_to_client(f"Process {process.pid} exited with code {exit_code}")
+
     return exit_code
 
 
@@ -165,6 +176,7 @@ def create_ffmpeg_stream(
 # else have it return false
 def stop_video_by_type(video_type: State):
     if video_type in process_dict:
+        write_log_to_client(f"Stopped {video_type} video")
         kill_child_processes(process_dict[video_type])
         process_dict.pop(video_type)
         return True
@@ -193,7 +205,7 @@ def handle_interlude():
     while True:
         # Wait for the lock to be released
         interlude_lock.acquire()
-
+        write_log_to_client("Interlude thread unblocked...")
         # Check if the interlude stream is already running
         create_ffmpeg_stream(args.interlude, State.INTERLUDE, loop=True)
 
@@ -204,6 +216,7 @@ def download_next_video_in_list(playlist, current_index):
         next_index = 0
     video_url = playlist[next_index]
     if video_cache.find(Cache.get_video_id(video_url)) is None:
+        write_log_to_client(f"Downloading next video in playlist: {video_url}")
         video_cache.add(video_url)
 
 
@@ -212,9 +225,11 @@ def download_and_play_video(
 ):
     video_path = video_cache.find(Cache.get_video_id(url))
     if video_path is None:
+        write_log_to_client(f"Downloading {url} to disk")
         video_cache.add(url)
         video_path = video_cache.find(Cache.get_video_id(url))
-
+        write_log_to_client(f"Downloaded {url} to {video_path}")
+    stop_all_videos()
     return create_ffmpeg_stream(
         video_path,
         State.PLAYING,
@@ -353,9 +368,63 @@ def _clean_hls_dir():
     for f in hls_dir.glob("*.ts"):
         f.unlink(missing_ok=True)
 
+# --- SSE Log Broadcasting Integration ---
+
+# Sample default responses
+default_get_response = {
+    "message": "Default GET response"
+}
+
+default_post_response = {
+    "message": "Default POST response"
+}
+
+# List of queues for connected clients
+clients: List[asyncio.Queue] = []
+
+@app.get("/events")
+async def events(request: Request):
+    """
+    SSE endpoint. Clients connect here to receive events.
+    """
+    client_queue = asyncio.Queue()
+    clients.append(client_queue)
+
+    async def event_generator():
+        try:
+            while True:
+                if await request.is_disconnected():
+                    break
+                message = await client_queue.get()
+                yield f"data: {json.dumps(message)}\n\n"
+        finally:
+            clients.remove(client_queue)
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+def write_log_to_client(message: str):
+
+    response = {
+        "message": message,
+    }
+
+    for queue in clients:
+        queue.put_nowait(response)
+
+# Example endpoint to trigger log broadcast
+@app.post("/log")
+async def log_event(request: Request):
+    data = await request.json()
+    request_type = data.get("requestType", "POST")
+    response_data = data.get("responseData", {})
+    write_log_to_client("I HAVE A ")
+    return {"message": "Log sent to clients"}
+
 @app.get("/state")
 async def state():
     result = {"state": State.INTERLUDE}
+    write_log_to_client("I HAVE A STATE")
     if State.PLAYING in process_dict:
         result = {"state": State.PLAYING, "nowPlaying": current_video_dict}
     return result
@@ -395,9 +464,10 @@ async def play_file(file_path: str = "cache", title: str = None, thumbnail: str 
     #     if args.interlude:
     #         interlude_lock.release()
 
-
 @app.post("/play")
 async def play(url: str, loop: bool = False):
+    global buttonMsg
+    write_log_to_client("PROCESSING REQUEST")
     # Decode URL
     url = unquote(url)
 
@@ -425,7 +495,7 @@ async def play(url: str, loop: bool = False):
             t.start()
 
         else:
-            raise HTTPException(status_code=400, detail="given url is of unknown type")
+            raise HTTPException(status_code=400, detail="given url is of unknown type")        
         # Update Metrics
         MetricsHandler.video_count.inc()
         return {"detail": "Success"}
@@ -442,6 +512,15 @@ async def play(url: str, loop: bool = False):
     except Exception as e:
         logging.exception(e)
         raise HTTPException(status_code=500, detail="check logs")
+    
+# async def fake_stream():
+#     message = json.dumps({"text": f"{buttonMsg}"})
+#     yield f"data: {message}\n\n"
+#     time.sleep(1)
+# @app.get("/sseTest")
+# async def sse_test():
+#     return StreamingResponse(fake_stream(), media_type="text/event-stream")
+    
 
 
 @app.get("/metadata")
@@ -476,6 +555,8 @@ def metadata(url: str):
 
 @app.post("/stop")
 async def stop():
+    global buttonMsg
+    buttonMsg = "Play"
     current_video_dict.clear()
     # Check if there is a video playing to stop
     if State.PLAYING in process_dict:

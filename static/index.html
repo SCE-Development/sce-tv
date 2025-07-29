@@ -5,35 +5,58 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="index.css">
+    <link rel="icon" href="favicon.ico">
     <title>Burger</title>
 </head>
 
 <body>
-    <div style="text-align: center;">
-        <h2 style="text-align: center; color: white;" id="cache_tag" >SCE TV</h2>
-        <div id="urlInput">
-            <input type="text" id="url" onchange="OnUrlChange(event, true)" placeholder="PASTE A YOUTUBE LINK FOR EPICNESS">
-            <select id="resolution">
-                <option value="144">144p</option>
-                <option value="240">240p</option>
-                <option value="360">360p</option>
-                <option value="720">720p</option>
-                <option value="1080">1080p</option>
-            </select>
-            <button type="button" id="loop" style="background-color: blue;">Loop Video?</button>
-            <button type="button" id="play" style="background-color: green;">Play</button>
+    <div style="text-align: center; position: relative;">
+        <div id="logs-box">
+            <div id="logs-content"></div>
+        </div>
+        <div class="card">
+            <div style="display: flex; justify-content: center; align-items: center; flex-direction: column;">
+                <div style="display: flex; justify-content: center; align-items: center; padding-bottom: 10px;">
+                    <h2 id="cache_tag">SCE TV</h2>
+                    <button id="show-logs-btn">Show Logs</button>
+                </div>
+            </div>
+
+
+            <div id="urlInput">
+                <input type="text" id="url" onchange="OnUrlChange(event, true)"
+                    placeholder="PASTE A YOUTUBE LINK FOR EPICNESS">
+                <select id="resolution">
+                    <option value="144">144p</option>
+                    <option value="240">240p</option>
+                    <option value="360">360p</option>
+                    <option value="720">720p</option>
+                    <option value="1080">1080p</option>
+                </select>
+                <button type="button" id="loop" style="background-color: blue;">Loop Video?</button>
+                <button type="button" id="play" style="background-color: green;">Play</button>
+            </div>
         </div>
         <input type="checkbox" id="rate-limiter" style="visibility: hidden;">
         <div id="playing">
-            <h2>NOW PLAYING:</h2>
-            <button type="button" id="stop" style="background-color:red;" onclick="Stop(event)">Stop</button>
-        </div>
-        <div id="metadata">
-            <h3 id="title"></h3>
-            <img id="thumbnail" style="border-style: solid;border-width: 3px;border-radius: 25px;" width="640">
+            <div class="card">
+                <div id="metadata">
+                    <div style="display: flex; align-items: center; justify-content: center;">
+                        <h2>NOW PLAYING: </h2>
+                        <h2 id="title"></h2>
+                    </div>
+                    <button type="button" id="stop" style="background-color:red;" onclick="Stop(event)">Stop</button>
+                    <img id="thumbnail" style="border-style: solid;border-width: 3px;border-radius: 25px;" width="640">
+                </div>
+
+            </div>
         </div>
     </div>
     <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            var logsBox = document.getElementById('logs-box');
+            if (logsBox) logsBox.style.display = 'none';
+        });
         let stateURL = new URL(window.location.pathname + "state", window.location.origin)
         let stopURL = new URL(window.location.pathname + "stop", window.location.origin)
         let playButton = document.getElementById("play");
@@ -45,24 +68,32 @@
         loopButton.addEventListener("click", toggleLoopVideo);
         urlInput.addEventListener("input", OnUrlChange);
 
-        async function toggleLoopVideo(){
+        console.log("SSE Test: Listening for messages...");
+        const eventSource = new EventSource(new URL(window.location.pathname + "events", window.location.origin).href);
+        console.log("SSE Test: EventSource created");
+        eventSource.onmessage = (event) => {
+            const message = JSON.parse(event.data);
+            addLogMessage(message.message);
+        };
+
+        async function toggleLoopVideo() {
             videoWillLoop = !videoWillLoop;
-            if(videoWillLoop){
+            if (videoWillLoop) {
                 loopButton.textContent = "Video will loop!";
-                loopButton.style.backgroundColor="darkblue";
+                loopButton.style.backgroundColor = "darkblue";
             } else {
                 loopButton.textContent = "Loop Video?";
-                loopButton.style.backgroundColor="blue";
+                loopButton.style.backgroundColor = "blue";
             }
         }
-        
+
         async function Play(e) {
             e.preventDefault();
             const url = document.getElementById('url').value;
             let playURL = new URL(window.location.pathname + "play", window.location.origin)
-            
             playURL.searchParams.append("url", encodeURIComponent(url))
-            if(videoWillLoop){
+            playButton.textContent = "Success!";
+            if (videoWillLoop) {
                 playURL.searchParams.append("loop", 1)
             }
 
@@ -70,7 +101,7 @@
                 method: "POST",
             });
             const res_json = await response.json();
-            
+
             if (res_json["detail"] === "Success") {
                 playButton.textContent = "Success!";
                 playButton.disabled = true;
@@ -84,9 +115,10 @@
             }
             else {
                 alert(res_json["detail"]);
+                playButton.textContent = "Play";
             }
         }
-    
+
         async function Stop(e) {
             e.preventDefault();
             await fetch(stopURL.href, { method: "POST" });
@@ -96,23 +128,24 @@
         fetch(stateURL.href).then((response) => response.json()).then((json) => {
             const state = json["state"];
             if (state === "playing") {
-				document.getElementById("playing").style.visibility = "visible";
+                document.getElementById("urlInput").style.visibility = "hidden";
+                document.getElementById("playing").style.visibility = "visible";
                 document.getElementById('title').innerHTML = json["nowPlaying"]["title"];
                 document.getElementById('thumbnail').src = json["nowPlaying"]["thumbnail"]
             }
         })
 
         // Add a function to navigate to the cache page when clicking on the h2 tag
-        document.getElementById("cache_tag").addEventListener("click", function(){
+        document.getElementById("cache_tag").addEventListener("click", function () {
             window.location.href = window.location.href + "cache";
         });
 
-        async function OnUrlChange(e, override=false) {
+        async function OnUrlChange(e, override = false) {
             const url = document.getElementById('url').value;
             const reg = /https:\/\/www\.youtube\.com\/(playlist|watch)\?(list|v)=\w+/;
             // If the rate limiter is not checked (or override) and the URL is a valid YouTube URL
             // Then update the metadata
-            if ( (override || !rateLimiterCheckbox.checked) && reg.test(url) ) {
+            if ((override || !rateLimiterCheckbox.checked) && reg.test(url)) {
                 await UpdateMetadata(url);
             }
         }
@@ -157,6 +190,30 @@
                 document.getElementById('thumbnail').src = json["nowPlaying"]["thumbnail"]
             }
         })
+
+        // Toggle Show Logs button text and show/hide logs box
+        document.getElementById("show-logs-btn").addEventListener("click", function () {
+            const logsBox = document.getElementById("logs-box");
+            if (this.textContent === "Show Logs") {
+                this.textContent = "Hide";
+                logsBox.style.display = "flex";
+            } else {
+                this.textContent = "Show Logs";
+                logsBox.style.display = "none";
+            }
+        });
+
+        // Function to add a log message to the logs box with a timestamp
+        function addLogMessage(message) {
+            const logsContent = document.getElementById('logs-content');
+            const logEntry = document.createElement('code');
+            const now = new Date();
+            const timestamp = now.toISOString();
+            logEntry.textContent = `${timestamp}: ${message}`;
+            logsContent.appendChild(logEntry);
+            // Scroll to bottom
+            logsContent.scrollTop = logsContent.scrollHeight;
+        }
     </script>
 </body>
 
