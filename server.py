@@ -100,6 +100,11 @@ def create_ffmpeg_stream(
     if video_path is None:
         logging.info("video_path is None. ffmpeg_stream cancelled.")
         return 2
+    
+    if (stop_all_videos()):
+
+        time.sleep(5)
+
     # Create a subprocess to stream the video using FFmpeg
     command = [
         "ffmpeg",
@@ -139,12 +144,13 @@ def create_ffmpeg_stream(
         current_video_dict["title"] = title
         current_video_dict["thumbnail"] = thumbnail
 
+    logging.info(f"process {process.pid} started for {video_type.value} video: {video_path}")
     process_dict[video_type] = process.pid
     MetricsHandler.streams_count.labels(video_type=video_type.value).inc(amount=1)
     MetricsHandler.stream_state.labels(video_type=video_type.value).set(1)
     # the below function returns 0 if the video ended on its own
     # 137, 1
-    logging.info(f"process {process.pid} started for {video_type.value} video: {video_path}")
+    logging.info(f"process {process.pid} exited with code {exit_code}")
     write_log_to_client(f"Process {process.pid} started for {video_type.value} video: {video_path}")
     exit_code = process.wait()
 
@@ -166,18 +172,22 @@ def create_ffmpeg_stream(
 
 
 # stop the video by type
+# have stop_video_by_type return true if kill_child_processes was called
+# else have it return false
 def stop_video_by_type(video_type: State):
     if video_type in process_dict:
         write_log_to_client(f"Stopped {video_type} video")
         kill_child_processes(process_dict[video_type])
         process_dict.pop(video_type)
+        return True
+    return False
 
-
+#stop_all_videos should also return a boolean, from what stop_video_by_type returned
 def stop_all_videos():
-    stop_video_by_type(State.INTERLUDE)
-    stop_video_by_type(State.PLAYING)
+    return stop_video_by_type(State.INTERLUDE) or stop_video_by_type(State.PLAYING)
+    
 
-
+ 
 # terminate a parent process and all its child processes using a specified signal.
 def kill_child_processes(parent_pid, sig=signal.SIGKILL):
     try:
@@ -330,7 +340,7 @@ def run_hls_stream():
             stdin=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
         )
-        logging.info(f"HLS worker: started FFmpeg PID {proc.pid}")
+        logging.info(f"HLS process started with pid {proc.pid}")
         # start the logging thread (non-blocking)
         threading.Thread(
             target=_monitor_ffmpeg, args=(proc,), daemon=True
@@ -338,7 +348,7 @@ def run_hls_stream():
         # wait until a playback thread ends
         hls_lock.acquire()
         # rotate: kill, clean, loop
-        logging.info("HLS worker: rotate signal, killing FFmpeg & cleaning dir")
+        logging.info(f"hls_lock acquired, stopping pid {proc.pid}")
         kill_child_processes(proc.pid)
         _clean_hls_dir()
 
@@ -422,13 +432,6 @@ async def state():
 
 @app.post("/play/file")
 async def play_file(file_path: str = "cache", title: str = None, thumbnail: str = None):
-
-    # If any video playing, stop it
-    for video_type in State:
-        # Stop the video playing subprocess
-        stop_video_by_type(video_type)
-
-    # Start thread to stream the video and provide a response
     try:
 
         # check if we are going to play all videos or a single video in the cache
