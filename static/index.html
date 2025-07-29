@@ -92,7 +92,7 @@
             const url = document.getElementById('url').value;
             let playURL = new URL(window.location.pathname + "play", window.location.origin)
             playURL.searchParams.append("url", encodeURIComponent(url))
-            // playButton.textContent = "Success!";
+            playButton.textContent = "Success!";
             if (videoWillLoop) {
                 playURL.searchParams.append("loop", 1)
             }
@@ -209,7 +209,7 @@
         // Function to add a log message to the logs box with a timestamp
         function addLogMessage(message) {
             const logsContent = document.getElementById('logs-content');
-            const logEntry = document.createElement('div');
+            const logEntry = document.createElement('code');
             const now = new Date();
             const timestamp = now.toISOString();
             logEntry.textContent = `${timestamp}: ${message}`;
