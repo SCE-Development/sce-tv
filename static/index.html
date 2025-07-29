@@ -75,8 +75,7 @@
                 playButton.textContent = "Success!";
                 playButton.disabled = true;
                 document.getElementById("playing").style.display = "block";
-                //Manually upate the urlInput and stop button, or else it won't update unless page is reloaded
-                document.getElementById("urlInput").style.visibility = "hidden";
+                //Manually upate the stop button, or else it won't update unless page is reloaded
                 document.getElementById("playing").style.visibility="visible";
                 setTimeout(() => {
                     playButton.textContent = "Play";
@@ -91,14 +90,12 @@
         async function Stop(e) {
             e.preventDefault();
             await fetch(stopURL.href, { method: "POST" });
-            document.getElementById("urlInput").style.visibility = "visible";
             document.getElementById("metadata").style.visibility = "hidden";
             document.getElementById("playing").style.display = "none";
         }
         fetch(stateURL.href).then((response) => response.json()).then((json) => {
             const state = json["state"];
             if (state === "playing") {
-                document.getElementById("urlInput").style.visibility = "hidden";
 				document.getElementById("playing").style.visibility = "visible";
                 document.getElementById('title').innerHTML = json["nowPlaying"]["title"];
                 document.getElementById('thumbnail').src = json["nowPlaying"]["thumbnail"]
@@ -156,7 +153,6 @@
             else {
                 document.getElementById("metadata").style.visibility = "visible";
                 document.getElementById("playing").style.display = "block";
-                document.getElementById("urlInput").style.visibility = "hidden";
                 document.getElementById('title').innerHTML = json["nowPlaying"]["title"];
                 document.getElementById('thumbnail').src = json["nowPlaying"]["thumbnail"]
             }
