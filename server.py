@@ -150,9 +150,9 @@ def create_ffmpeg_stream(
     MetricsHandler.stream_state.labels(video_type=video_type.value).set(1)
     # the below function returns 0 if the video ended on its own
     # 137, 1
-    logging.info(f"process {process.pid} exited with code {exit_code}")
-    write_log_to_client(f"Process {process.pid} started for {video_type.value} video: {video_path}")
     exit_code = process.wait()
+    write_log_to_client(f"Process {process.pid} started for {video_type.value} video: {video_path}")
+    logging.info(f"process {process.pid} exited with code {exit_code}")
 
     MetricsHandler.subprocess_count.labels(
         exit_code=exit_code,
