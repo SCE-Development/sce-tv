@@ -247,7 +247,7 @@ def handle_playlist(playlist_url: str, loop: bool):
     # Stop interlude
     while True:
         for i in range(len(playlist)):
-            while cancel_event.is_set():
+            if cancel_event.is_set():
                 logging.info("Playlist stop flag set, exiting playlist thread")
                 write_log_to_client("Playlist stop flag set, exiting playlist thread")
                 if args.interlude:
