@@ -30,6 +30,12 @@ class Metrics(enum.Enum):
         prometheus_client.Summary,
     )
 
+    DOWNLOAD_RATE = (
+        "download_rate",
+        "The rate of downloading videos in bytes per seconds",
+        prometheus_client.Histogram,
+    )
+
     DATA_DOWNLOADED = (
         "data_downloaded",
         "Total video data downloaded in bytes",
