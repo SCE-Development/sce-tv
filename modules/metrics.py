@@ -107,3 +107,4 @@ class MetricsHandler:
                     metric.title, metric.description, labelnames=metric.labels
                 ),
             )
+            
