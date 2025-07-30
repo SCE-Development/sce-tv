@@ -69,6 +69,8 @@ args = get_args()
 
 buttonMsg = "Play"
 
+playlist_stop_flag = False
+
 # Create a cache object to store video files, initializing it with the file path specified in the command-line arguments or configuration settings. This instance is used to cache downloaded videos.
 video_cache = Cache(file_path=args.videopath, cache_file=args.cache_state_file)
 
@@ -150,9 +152,9 @@ def create_ffmpeg_stream(
     MetricsHandler.stream_state.labels(video_type=video_type.value).set(1)
     # the below function returns 0 if the video ended on its own
     # 137, 1
-    logging.info(f"process {process.pid} exited with code {exit_code}")
-    write_log_to_client(f"Process {process.pid} started for {video_type.value} video: {video_path}")
     exit_code = process.wait()
+    write_log_to_client(f"Process {process.pid} started for {video_type.value} video: {video_path}")
+    logging.info(f"process {process.pid} exited with code {exit_code}")
 
     MetricsHandler.subprocess_count.labels(
         exit_code=exit_code,
@@ -241,10 +243,17 @@ def download_and_play_video(
 
 
 def handle_playlist(playlist_url: str, loop: bool):
+    global playlist_stop_flag
     playlist = Playlist(playlist_url)
     # Stop interlude
     while True:
         for i in range(len(playlist)):
+            if playlist_stop_flag:
+                logging.info("Playlist stop flag set, exiting playlist thread")
+                write_log_to_client("Playlist stop flag set, exiting playlist thread")
+                if args.interlude:
+                    interlude_lock.release()
+                return
             video_url = playlist[i]
             video = YouTube(video_url)
             # Only play age-unrestricted videos to avoid exceptions
@@ -467,6 +476,8 @@ async def play_file(file_path: str = "cache", title: str = None, thumbnail: str 
 @app.post("/play")
 async def play(url: str, loop: bool = False):
     global buttonMsg
+    global playlist_stop_flag
+    playlist_stop_flag = False
     write_log_to_client("PROCESSING REQUEST")
     # Decode URL
     url = unquote(url)
@@ -556,6 +567,8 @@ def metadata(url: str):
 @app.post("/stop")
 async def stop():
     global buttonMsg
+    global playlist_stop_flag
+    playlist_stop_flag = True
     buttonMsg = "Play"
     current_video_dict.clear()
     # Check if there is a video playing to stop
