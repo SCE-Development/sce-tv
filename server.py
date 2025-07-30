@@ -69,6 +69,8 @@ args = get_args()
 
 buttonMsg = "Play"
 
+playlist_stop_flag = False
+
 # Create a cache object to store video files, initializing it with the file path specified in the command-line arguments or configuration settings. This instance is used to cache downloaded videos.
 video_cache = Cache(file_path=args.videopath, cache_file=args.cache_state_file)
 
@@ -241,10 +243,18 @@ def download_and_play_video(
 
 
 def handle_playlist(playlist_url: str, loop: bool):
+    global playlist_stop_flag
     playlist = Playlist(playlist_url)
     # Stop interlude
     while True:
         for i in range(len(playlist)):
+            if playlist_stop_flag:
+                playlist_stop_flag = False
+                logging.info("Playlist stop flag set, exiting playlist thread")
+                write_log_to_client("Playlist stop flag set, exiting playlist thread")
+                if args.interlude:
+                    interlude_lock.release()
+                return
             video_url = playlist[i]
             video = YouTube(video_url)
             # Only play age-unrestricted videos to avoid exceptions
@@ -556,6 +566,8 @@ def metadata(url: str):
 @app.post("/stop")
 async def stop():
     global buttonMsg
+    global playlist_stop_flag
+    playlist_stop_flag = True
     buttonMsg = "Play"
     current_video_dict.clear()
     # Check if there is a video playing to stop
