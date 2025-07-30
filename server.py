@@ -249,7 +249,6 @@ def handle_playlist(playlist_url: str, loop: bool):
     while True:
         for i in range(len(playlist)):
             if playlist_stop_flag:
-                playlist_stop_flag = False
                 logging.info("Playlist stop flag set, exiting playlist thread")
                 write_log_to_client("Playlist stop flag set, exiting playlist thread")
                 if args.interlude:
@@ -477,6 +476,8 @@ async def play_file(file_path: str = "cache", title: str = None, thumbnail: str 
 @app.post("/play")
 async def play(url: str, loop: bool = False):
     global buttonMsg
+    global playlist_stop_flag
+    playlist_stop_flag = False
     write_log_to_client("PROCESSING REQUEST")
     # Decode URL
     url = unquote(url)
