@@ -134,9 +134,8 @@ def create_ffmpeg_stream(
         command[2:2] = ["-stream_loop", "-1"]
     process = subprocess.Popen(
         command,
-        # stdout=subprocess.PIPE,
-        # stdin=subprocess.DEVNULL,
-        # stderr=subprocess.STDOUT,
+        strderr=None,
+        stdout=None,
         text=True,
         bufsize=1,
     )
