@@ -634,7 +634,7 @@ def signal_handler():
         video_cache.clear()
 
 
-if not os.path.exists(args.hls_file_path):
+if args.hls_file_path and not os.path.exists(args.hls_file_path):
     os.makedirs(args.hls_file_path)
 app.mount("/hls", StaticFiles(directory=args.hls_file_path), name="hls")
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
@@ -649,7 +649,9 @@ if __name__ == "server":
     MetricsHandler.cache_size.set(0)
     MetricsHandler.cache_size_bytes.set(0)
     
-    threading.Thread(target=run_hls_stream).start()
+    # threading.Thread(target=run_hls_stream).start()
+    if args.hls_file_path:
+        threading.Thread(target=run_hls_stream).start()
     # Start up interlude by default
     if args.interlude:
         threading.Thread(target=handle_interlude).start()
