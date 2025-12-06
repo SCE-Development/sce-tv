@@ -67,8 +67,6 @@ hls_lock = threading.Lock()
 
 args = get_args()
 
-buttonMsg = "Play"
-
 cancel_event = threading.Event()
 
 # Create a cache object to store video files, initializing it with the file path specified in the command-line arguments or configuration settings. This instance is used to cache downloaded videos.
@@ -473,7 +471,6 @@ async def play_file(file_path: str = "cache", title: str = None, thumbnail: str 
 
 @app.post("/play")
 async def play(url: str, loop: bool = False):
-    global buttonMsg
     cancel_event.clear()
     write_log_to_client("PROCESSING REQUEST")
     # Decode URL
@@ -521,15 +518,6 @@ async def play(url: str, loop: bool = False):
         logging.exception(e)
         raise HTTPException(status_code=500, detail="check logs")
     
-# async def fake_stream():
-#     message = json.dumps({"text": f"{buttonMsg}"})
-#     yield f"data: {message}\n\n"
-#     time.sleep(1)
-# @app.get("/sseTest")
-# async def sse_test():
-#     return StreamingResponse(fake_stream(), media_type="text/event-stream")
-    
-
 
 @app.get("/metadata")
 def metadata(url: str):
@@ -564,8 +552,6 @@ def metadata(url: str):
 @app.post("/stop")
 async def stop():
     cancel_event.set()
-    global buttonMsg
-    buttonMsg = "Play"
     current_video_dict.clear()
     # Check if there is a video playing to stop
     if State.PLAYING in process_dict:
