@@ -134,7 +134,7 @@ def create_ffmpeg_stream(
         command[2:2] = ["-stream_loop", "-1"]
     process = subprocess.Popen(
         command,
-        strderr=None,
+        stderr=None,
         stdout=None,
         text=True,
         bufsize=1,
@@ -177,8 +177,9 @@ def create_ffmpeg_stream(
 # else have it return false
 def stop_video_by_type(video_type: State):
     if video_type in process_dict:
-        write_log_to_client(f"Stopped {video_type} video")
+        write_log_to_client(f"Stopping {video_type} video")
         kill_child_processes(process_dict[video_type])
+        write_log_to_client(f"Successfully stopped {video_type} video")
         process_dict.pop(video_type)
         return True
     return False
@@ -294,6 +295,7 @@ def _get_url_type(url: str):
     except:
         try:
             pytubefix.YouTube(url)
+            logging.debug(f"{url} is a video")
             return UrlType.VIDEO
         except:
             logging.error(f"url {url} is not a playlist or video!")
@@ -431,9 +433,9 @@ async def log_event(request: Request):
 @app.get("/state")
 async def state():
     result = {"state": State.INTERLUDE}
-    write_log_to_client("I HAVE A STATE")
     if State.PLAYING in process_dict:
         result = {"state": State.PLAYING, "nowPlaying": current_video_dict}
+    write_log_to_client("I HAVE A STATE " + str(result))
     return result
 
 
@@ -462,20 +464,15 @@ async def play_file(file_path: str = "cache", title: str = None, thumbnail: str 
 
         return {"detail": "Success"}
 
-    except Exception as e:
-        logging.exception(e)
+    except Exception:
+        logging.exception('unable to play file from cache')
         raise HTTPException(status_code=500, detail="check logs")
-    # finally:
-    #     # Start streaming video
-    #     # Once video is finished playing (or stopped early), restart interlude
-    #     if args.interlude:
-    #         interlude_lock.release()
 
 @app.post("/play")
 async def play(url: str, loop: bool = False):
     global buttonMsg
     cancel_event.clear()
-    write_log_to_client("PROCESSING REQUEST")
+    write_log_to_client("PROCESSING REQUEST for " + url)
     # Decode URL
     url = unquote(url)
 
@@ -517,19 +514,10 @@ async def play(url: str, loop: bool = False):
         )
     except pytubefix.exceptions.VideoUnavailable:
         raise HTTPException(status_code=404, detail="This video is unavailable :(")
-    except Exception as e:
-        logging.exception(e)
+    except Exception:
+        logging.exception('unable to play video from url')
         raise HTTPException(status_code=500, detail="check logs")
     
-# async def fake_stream():
-#     message = json.dumps({"text": f"{buttonMsg}"})
-#     yield f"data: {message}\n\n"
-#     time.sleep(1)
-# @app.get("/sseTest")
-# async def sse_test():
-#     return StreamingResponse(fake_stream(), media_type="text/event-stream")
-    
-
 
 @app.get("/metadata")
 def metadata(url: str):
