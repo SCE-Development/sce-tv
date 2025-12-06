@@ -63,8 +63,6 @@ current_video_dict = {}
 
 interlude_lock = threading.Lock()
 
-hls_lock = threading.Lock()
-
 args = get_args()
 
 buttonMsg = "Play"
@@ -165,7 +163,6 @@ def create_ffmpeg_stream(
 
     if (exit_code == 0 or video_type == State.PLAYING) and play_interlude_after and args.interlude:
         interlude_lock.release()
-    hls_lock.release()
     logging.info(f"process {process.pid} exited with code {exit_code}")
     write_log_to_client(f"Process {process.pid} exited with code {exit_code}")
 
@@ -324,56 +321,6 @@ def handle_cache_play():
         # if the video ended on its own, continue to the next video, otherwise break out of the loop
         if response != 0:
             break
-
-
-def run_hls_stream():
-    playlist_path = Path(args.hls_file_path)
-    playlist_path.parent.mkdir(parents=True, exist_ok=True)
-    while True:
-        ffmpeg_cmd = [
-            "ffmpeg",
-            "-i", args.rtmp_stream_url,
-            "-c:v", "copy",
-            "-c:a", "copy",
-            "-f", "hls",
-            "-hls_time", "4",
-            "-hls_list_size", "5",
-            "-hls_flags", "delete_segments",
-            f"{args.hls_file_path}/tv.m3u8",
-        ]
-        proc = subprocess.Popen(
-            ffmpeg_cmd,
-            stdout=subprocess.DEVNULL,
-            stdin=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-        )
-        logging.info(f"HLS process started with pid {proc.pid}")
-        # start the logging thread (non-blocking)
-        threading.Thread(
-            target=_monitor_ffmpeg, args=(proc,), daemon=True
-        ).start()
-        # wait until a playback thread ends
-        hls_lock.acquire()
-        # rotate: kill, clean, loop
-        logging.info(f"hls_lock acquired, stopping pid {proc.pid}")
-        kill_child_processes(proc.pid)
-        _clean_hls_dir()
-
-def _monitor_ffmpeg(proc: subprocess.Popen):
-    """Block until proc dies and log exit / stderr."""
-    exit_code = proc.wait()
-    if exit_code == 0:
-        logging.info(f"HLS ffmpeg exited cleanly (code 0)")
-    else:
-        err = proc.stderr.read().decode(errors="replace")
-        logging.error(
-            f"HLS ffmpeg exited with code {exit_code}\n---- STDERR ----\n{err}"
-        )
-
-def _clean_hls_dir():
-    hls_dir = Path(args.hls_file_path)
-    for f in hls_dir.glob("*.ts"):
-        f.unlink(missing_ok=True)
 
 # --- SSE Log Broadcasting Integration ---
 
@@ -570,7 +517,6 @@ async def stop():
     # Check if there is a video playing to stop
     if State.PLAYING in process_dict:
         # Stop the video playing subprocess
-        hls_lock.release()
         stop_video_by_type(State.PLAYING)
 
 
@@ -602,11 +548,6 @@ def get_cache():
     return FileResponse("static/cache.html")
 
 
-@app.get("/hls")
-def get_hls():
-    return FileResponse("static/hls.html")
-
-
 @app.get("/debug")
 def debug():
     return {
@@ -622,9 +563,6 @@ def debug():
 def signal_handler():
     stop_all_videos()
 
-    # clears all files in the hls directory
-    if os.path.exists(args.hls_file_path):
-        os.unlink(args.hls_file_path)
     # if the cache file is specfied, write the cache to the file and not clear the downloaded videos
     if args.cache_state_file:
         video_cache.write_cache()
@@ -634,9 +572,6 @@ def signal_handler():
         video_cache.clear()
 
 
-if args.hls_file_path and not os.path.exists(args.hls_file_path):
-    os.makedirs(args.hls_file_path)
-app.mount("/hls", StaticFiles(directory=args.hls_file_path), name="hls")
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
 
 # we have a separate __name__ check here due to how FastAPI starts
@@ -649,9 +584,6 @@ if __name__ == "server":
     MetricsHandler.cache_size.set(0)
     MetricsHandler.cache_size_bytes.set(0)
     
-    # threading.Thread(target=run_hls_stream).start()
-    if args.hls_file_path:
-        threading.Thread(target=run_hls_stream).start()
     # Start up interlude by default
     if args.interlude:
         threading.Thread(target=handle_interlude).start()
