@@ -392,22 +392,21 @@ async def play_file(file_path: str = "cache", title: str = None, thumbnail: str 
 
         # check if we are going to play all videos or a single video in the cache
         if file_path == "cache":
-
             # Start a thread to play all videos in the cache
             threading.Thread(target=handle_cache_play).start()
+            return {"detail": "Success"}
 
-        else:
-            # Start a thread to play a single video in the cache
-            threading.Thread(
-                target=create_ffmpeg_stream,
-                args=(
-                    file_path,
-                    State.PLAYING,
-                    False,
-                    title,
-                    thumbnail,
-                ),
-            ).start()
+        # Start a thread to play a single video in the cache
+        threading.Thread(
+            target=create_ffmpeg_stream,
+            args=(
+                file_path,
+                State.PLAYING,
+                False,
+                title,
+                thumbnail,
+            ),
+        ).start()
 
         return {"detail": "Success"}
 
@@ -429,27 +428,29 @@ async def play(url: str, loop: bool = False):
         # Get the type of URL (VIDEO, PLAYLIST, UNKNOWN)
         url_type = _get_url_type(url)
         logging.info(f"{url} is a {url_type}")
+        if url_type == UrlType.UNKNOWN:
+            raise HTTPException(status_code=400, detail="given url is of unknown type")
+
+        # Update Metrics
+        MetricsHandler.video_count.inc()
 
         # Check the type of URL and start the appropriate thread
-        if url_type == UrlType.VIDEO:
-            video = YouTube(url)
-            t = threading.Thread(
-                target=download_and_play_video,
-                args=(url, loop, video.title, video.thumbnail_url),
-            )
-            t.start()
-
-        elif url_type == UrlType.PLAYLIST:
+        if url_type == UrlType.PLAYLIST:
             t = threading.Thread(
                 target=handle_playlist,
                 args=(url, loop),
             )
             t.start()
+            return {"detail": "Success"}
 
-        else:
-            raise HTTPException(status_code=400, detail="given url is of unknown type")        
-        # Update Metrics
-        MetricsHandler.video_count.inc()
+        # if url_type == UrlType.VIDEO:
+        video = YouTube(url)
+        t = threading.Thread(
+            target=download_and_play_video,
+            args=(url, loop, video.title, video.thumbnail_url),
+        )
+        t.start()
+
         return {"detail": "Success"}
 
     # If download is unsuccessful, give response and reason
@@ -471,17 +472,19 @@ def metadata(url: str):
     url = unquote(url)
     try:
         url_type = _get_url_type(url)
+        if url_type == UrlType.UNKNOWN:
+            logging.error(f"unable to determine url type from {url}")
+            raise HTTPException(status_code=400, detail="given url is of unknown type")
+
         # Check if the given url is a valid video or playlist
-        if url_type == UrlType.VIDEO:
-            video = YouTube(url)
-            return {"title": video.title, "thumbnail": video.thumbnail_url}
-        elif url_type == UrlType.PLAYLIST:
+        if url_type == UrlType.PLAYLIST:
             playlist = Playlist(url)
             first_video = playlist.videos[0]
             return {"title": playlist.title, "thumbnail": first_video.thumbnail_url}
-        else:
-            logging.error(f"unable to determine url type from {url}")
-            raise HTTPException(status_code=400, detail="given url is of unknown type")
+
+        # if url_type == UrlType.VIDEO:
+        video = YouTube(url)
+        return {"title": video.title, "thumbnail": video.thumbnail_url}
     # If pytubefix is unable to fetch video metadata, give response and reason
     except pytubefix.exceptions.AgeRestrictedError:
         raise HTTPException(status_code=400, detail="This video is age restricted :(")
