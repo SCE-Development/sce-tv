@@ -96,12 +96,11 @@ def create_ffmpeg_stream(
     title=None,
     thumbnail=None,
     play_interlude_after=True,
-    repeat=False
 ):
     if video_path is None:
         logging.info("video_path is None. ffmpeg_stream cancelled.")
         return 2
-
+    
     if (stop_all_videos()):
 
         time.sleep(5)
@@ -139,7 +138,7 @@ def create_ffmpeg_stream(
         bufsize=1,
     )
 
-    current_video_dict.clear()
+    current_video_dict.clear()  
     if None not in [title, thumbnail]:
         current_video_dict["title"] = title
         current_video_dict["thumbnail"] = thumbnail
@@ -221,7 +220,7 @@ def download_next_video_in_list(playlist, current_index):
 
 
 def download_and_play_video(
-    url, loop, repeat=False, title=None, thumbnail=None, play_interlude_after=True
+    url, loop, title=None, thumbnail=None, play_interlude_after=True
 ):
     video_path = video_cache.find(Cache.get_video_id(url))
     if video_path is None:
@@ -230,7 +229,7 @@ def download_and_play_video(
         video_path = video_cache.find(Cache.get_video_id(url))
         write_log_to_client(f"Downloaded {url} to {video_path}")
     stop_all_videos()
-    exit_code = create_ffmpeg_stream(
+    return create_ffmpeg_stream(
         video_path,
         State.PLAYING,
         loop,
@@ -238,16 +237,9 @@ def download_and_play_video(
         thumbnail,
         play_interlude_after=play_interlude_after,
     )
-    print(exit_code, repeat)
-    # If repeat mode is enabled and video ended normally, play all cached videos on repeat
-    if repeat and exit_code == 0:
-        write_log_to_client("Repeat mode: starting cache playback loop")
-        handle_cache_play(repeat=True)
-
-    return exit_code
 
 
-def handle_playlist(playlist_url: str, loop: bool, repeat: bool):
+def handle_playlist(playlist_url: str, loop: bool):
     playlist = Playlist(playlist_url)
     # Stop interlude
     while True:
@@ -261,23 +253,20 @@ def handle_playlist(playlist_url: str, loop: bool, repeat: bool):
             video_url = playlist[i]
             video = YouTube(video_url)
             # Only play age-unrestricted videos to avoid exceptions
-            if video.age_restricted:
-                logging.info(f"Skipping age-restricted video: {video_url}")
-                write_log_to_client(f"Skipping age-restricted video: {video_url}")
-                continue
-            t = threading.Thread(
-                target=download_next_video_in_list,
-                args=(playlist, i),
-                daemon=True,
-            )
-            t.start()
-            result = download_and_play_video(
-                video_url,
-                loop=False,
-                title=video.title,
-                thumbnail=video.thumbnail_url,
-                play_interlude_after=False,
-            )
+            if not video.age_restricted:
+                t = threading.Thread(
+                    target=download_next_video_in_list,
+                    args=(playlist, i),
+                    daemon=True,
+                )
+                t.start()
+                result = download_and_play_video(
+                    video_url,
+                    loop=False,
+                    title=video.title,
+                    thumbnail=video.thumbnail_url,
+                    play_interlude_after=False,
+                )
             if result == 2:
                 logging.info(
                     f"Video {video_url} failed to download, skipping to next video in playlist"
@@ -292,12 +281,7 @@ def handle_playlist(playlist_url: str, loop: bool, repeat: bool):
         if not loop:
             if args.interlude:
                 interlude_lock.release()
-        # If repeat mode is enabled and video ended normally, play all cached videos on repeat
-        if not loop and repeat and result == 0:
-            write_log_to_client("Repeat mode: starting cache playback loop")
-            handle_cache_play(repeat=True)
-        else:
-            return
+            break
 
 
 def _get_url_type(url: str):
@@ -315,34 +299,31 @@ def _get_url_type(url: str):
             return UrlType.UNKNOWN
 
 
-def handle_cache_play(repeat:bool=False):
+def handle_cache_play():
     # Get all the videos in the cache
     cache_videos = video_cache.video_id_to_path
 
     # Loop through each video in the cache
-    while True:
+    for _, video in cache_videos.items():
 
-        for _, video in cache_videos.items():
+        # Store the current playing video information
+        current_video_dict["title"] = video.title
+        current_video_dict["thumbnail"] = video.thumbnail
 
-            # Store the current playing video information
-            current_video_dict["title"] = video.title
-            current_video_dict["thumbnail"] = video.thumbnail
+        # Get the file path of the video to stream
+        file_path = video.file_path
+        response = create_ffmpeg_stream(
+            file_path,
+            State.PLAYING,
+            loop=False,
+            title=video.title,
+            thumbnail=video.thumbnail,
+        )
 
-            # Get the file path of the video to stream
-            file_path = video.file_path
-            response = create_ffmpeg_stream(
-                file_path,
-                State.PLAYING,
-                loop=False,
-                title=video.title,
-                thumbnail=video.thumbnail,
-            )
-            # if the video ended on its own, continue to the next video, otherwise break out of the loop
-            if response != 0:
-                break 
+        # if the video ended on its own, continue to the next video, otherwise break out of the loop
+        if response != 0:
+            break
 
-            if not repeat:
-                break # only loop if repeat cache mode
 # --- SSE Log Broadcasting Integration ---
 
 # Sample default responses
@@ -411,22 +392,21 @@ async def play_file(file_path: str = "cache", title: str = None, thumbnail: str 
 
         # check if we are going to play all videos or a single video in the cache
         if file_path == "cache":
-
             # Start a thread to play all videos in the cache
             threading.Thread(target=handle_cache_play).start()
+            return {"detail": "Success"}
 
-        else:
-            # Start a thread to play a single video in the cache
-            threading.Thread(
-                target=create_ffmpeg_stream,
-                args=(
-                    file_path,
-                    State.PLAYING,
-                    False,
-                    title,
-                    thumbnail,
-                ),
-            ).start()
+        # Start a thread to play a single video in the cache
+        threading.Thread(
+            target=create_ffmpeg_stream,
+            args=(
+                file_path,
+                State.PLAYING,
+                False,
+                title,
+                thumbnail,
+            ),
+        ).start()
 
         return {"detail": "Success"}
 
@@ -435,7 +415,7 @@ async def play_file(file_path: str = "cache", title: str = None, thumbnail: str 
         raise HTTPException(status_code=500, detail="check logs")
 
 @app.post("/play")
-async def play(url: str, loop: bool = False, repeat: bool = False):
+async def play(url: str, loop: bool = False):
     global buttonMsg
     cancel_event.clear()
     write_log_to_client("PROCESSING REQUEST for " + url)
@@ -448,27 +428,29 @@ async def play(url: str, loop: bool = False, repeat: bool = False):
         # Get the type of URL (VIDEO, PLAYLIST, UNKNOWN)
         url_type = _get_url_type(url)
         logging.info(f"{url} is a {url_type}")
+        if url_type == UrlType.UNKNOWN:
+            raise HTTPException(status_code=400, detail="given url is of unknown type")
 
-        # Check the type of URL and start the appropriate thread
-        if url_type == UrlType.VIDEO:
-            video = YouTube(url)
-            t = threading.Thread(
-                target=download_and_play_video,
-                args=(url, loop, repeat, video.title, video.thumbnail_url),
-            )
-            t.start()
-
-        elif url_type == UrlType.PLAYLIST:
-            t = threading.Thread(
-                target=handle_playlist,
-                args=(url, loop, repeat),
-            )
-            t.start()
-
-        else:
-            raise HTTPException(status_code=400, detail="given url is of unknown type")        
         # Update Metrics
         MetricsHandler.video_count.inc()
+
+        # Check the type of URL and start the appropriate thread
+        if url_type == UrlType.PLAYLIST:
+            t = threading.Thread(
+                target=handle_playlist,
+                args=(url, loop),
+            )
+            t.start()
+            return {"detail": "Success"}
+
+        # if url_type == UrlType.VIDEO:
+        video = YouTube(url)
+        t = threading.Thread(
+            target=download_and_play_video,
+            args=(url, loop, video.title, video.thumbnail_url),
+        )
+        t.start()
+
         return {"detail": "Success"}
 
     # If download is unsuccessful, give response and reason
@@ -490,17 +472,19 @@ def metadata(url: str):
     url = unquote(url)
     try:
         url_type = _get_url_type(url)
+        if url_type == UrlType.UNKNOWN:
+            logging.error(f"unable to determine url type from {url}")
+            raise HTTPException(status_code=400, detail="given url is of unknown type")
+
         # Check if the given url is a valid video or playlist
-        if url_type == UrlType.VIDEO:
-            video = YouTube(url)
-            return {"title": video.title, "thumbnail": video.thumbnail_url}
-        elif url_type == UrlType.PLAYLIST:
+        if url_type == UrlType.PLAYLIST:
             playlist = Playlist(url)
             first_video = playlist.videos[0]
             return {"title": playlist.title, "thumbnail": first_video.thumbnail_url}
-        else:
-            logging.error(f"unable to determine url type from {url}")
-            raise HTTPException(status_code=400, detail="given url is of unknown type")
+
+        # if url_type == UrlType.VIDEO:
+        video = YouTube(url)
+        return {"title": video.title, "thumbnail": video.thumbnail_url}
     # If pytubefix is unable to fetch video metadata, give response and reason
     except pytubefix.exceptions.AgeRestrictedError:
         raise HTTPException(status_code=400, detail="This video is age restricted :(")
