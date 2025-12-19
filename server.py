@@ -65,8 +65,6 @@ interlude_lock = threading.Lock()
 
 args = get_args()
 
-buttonMsg = "Play"
-
 cancel_event = threading.Event()
 
 # Create a cache object to store video files, initializing it with the file path specified in the command-line arguments or configuration settings. This instance is used to cache downloaded videos.
@@ -416,7 +414,6 @@ async def play_file(file_path: str = "cache", title: str = None, thumbnail: str 
 
 @app.post("/play")
 async def play(url: str, loop: bool = False):
-    global buttonMsg
     cancel_event.clear()
     write_log_to_client("PROCESSING REQUEST for " + url)
     # Decode URL
@@ -502,8 +499,6 @@ def metadata(url: str):
 @app.post("/stop")
 async def stop():
     cancel_event.set()
-    global buttonMsg
-    buttonMsg = "Play"
     current_video_dict.clear()
     # Check if there is a video playing to stop
     if State.PLAYING in process_dict:
