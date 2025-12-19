@@ -31,8 +31,4 @@ def get_args():
         "--cache-state-file",
         help="JSON file to persist cache state on server shutdown and recover on startup. if specified, the server will not empty the cache on shutdown"
     )
-    parser.add_argument(
-        "--hls-file-path",
-        help="optional path to store the rtmp stream in an hls file. visible at /hls on the server",
-    )
     return parser.parse_args()
