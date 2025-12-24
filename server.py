@@ -251,20 +251,23 @@ def handle_playlist(playlist_url: str, loop: bool):
             video_url = playlist[i]
             video = YouTube(video_url)
             # Only play age-unrestricted videos to avoid exceptions
-            if not video.age_restricted:
-                t = threading.Thread(
-                    target=download_next_video_in_list,
-                    args=(playlist, i),
-                    daemon=True,
-                )
-                t.start()
-                result = download_and_play_video(
-                    video_url,
-                    loop=False,
-                    title=video.title,
-                    thumbnail=video.thumbnail_url,
-                    play_interlude_after=False,
-                )
+            if video.age_restricted:
+                logging.info(f"Skipping age-restricted video: {video_url}")
+                write_log_to_client(f"Skipping age-restricted video: {video_url}")
+                continue
+            t = threading.Thread(
+                target=download_next_video_in_list,
+                args=(playlist, i),
+                daemon=True,
+            )
+            t.start()
+            result = download_and_play_video(
+                video_url,
+                loop=False,
+                title=video.title,
+                thumbnail=video.thumbnail_url,
+                play_interlude_after=False,
+            )
             if result == 2:
                 logging.info(
                     f"Video {video_url} failed to download, skipping to next video in playlist"
