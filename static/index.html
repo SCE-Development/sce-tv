@@ -89,6 +89,17 @@
 
         async function Play(e) {
             e.preventDefault();
+            let mouseDownTime = null;
+            document.addEventListener('mousedown', () =>{
+                mouseDownTime = Date.now();
+            })
+            document.addEventListener('mouseup',() => {
+                if (mouseDownTime) {
+                    const HoldTime = Date.now() - mouseDownTime;
+                    console.log(HoldTime);
+                    mouseDownTime = null;
+                }
+            })
             const url = document.getElementById('url').value;
             let playURL = new URL(window.location.pathname + "play", window.location.origin)
             playURL.searchParams.append("url", encodeURIComponent(url))
