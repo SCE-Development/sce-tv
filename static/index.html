@@ -64,6 +64,30 @@
         let urlInput = document.getElementById("url");
         let rateLimiterCheckbox = document.getElementById("rate-limiter");
         let videoWillLoop = false;
+        let repeatMode = false;
+        let mouseDownTime = null;
+
+        // to check how long the play button was pressed (play on repeat)
+        playButton.addEventListener('mousedown', () => {
+            mouseDownTime = Date.now();
+        });
+        playButton.addEventListener('mouseup', () => {
+            if (mouseDownTime) {
+                const HoldTime = Date.now() - mouseDownTime;
+                console.log(HoldTime);
+                mouseDownTime = null;
+                if (HoldTime >= 750) {
+                    repeatMode = !repeatMode;
+                    if (repeatMode) {
+                        playButton.textContent = "play on repeat";
+                        playButton.style.backgroundColor = "#4CAF50";
+                    } else {
+                        playButton.textContent = "Play";
+                        playButton.style.backgroundColor = "green";
+                    }
+                }
+            }
+        });
         playButton.addEventListener("click", Play);
         loopButton.addEventListener("click", toggleLoopVideo);
         urlInput.addEventListener("input", OnUrlChange);
@@ -89,21 +113,9 @@
 
         async function Play(e) {
             e.preventDefault();
-            let mouseDownTime = null;
-            document.addEventListener('mousedown', () =>{
-                mouseDownTime = Date.now();
-            })
-            document.addEventListener('mouseup',() => {
-                if (mouseDownTime) {
-                    const HoldTime = Date.now() - mouseDownTime;
-                    console.log(HoldTime);
-                    mouseDownTime = null;
-                }
-            })
             const url = document.getElementById('url').value;
             let playURL = new URL(window.location.pathname + "play", window.location.origin)
             playURL.searchParams.append("url", encodeURIComponent(url))
-            playButton.textContent = "Success!";
             if (videoWillLoop) {
                 playURL.searchParams.append("loop", 1)
             }
@@ -120,13 +132,21 @@
                 //Manually upate the stop button, or else it won't update unless page is reloaded
                 document.getElementById("playing").style.visibility="visible";
                 setTimeout(() => {
-                    playButton.textContent = "Play";
+                    if (repeatMode) {
+                        playButton.textContent = "play on repeat";
+                    } else {
+                        playButton.textContent = "Play";
+                    }
                     playButton.disabled = false;
                 }, 2000);
             }
             else {
                 alert(res_json["detail"]);
-                playButton.textContent = "Play";
+                if (repeatMode) {
+                    playButton.textContent = "play on repeat";
+                } else {
+                    playButton.textContent = "Play";
+                }
             }
         }
 
