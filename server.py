@@ -162,6 +162,7 @@ def create_ffmpeg_stream(
 
     if (exit_code == 0 or video_type == State.PLAYING) and play_interlude_after and args.interlude:
         interlude_lock.release()
+    hls_lock.release()
     logging.info(f"process {process.pid} exited with code {exit_code}")
     write_log_to_client(f"Process {process.pid} exited with code {exit_code}")
 
@@ -236,7 +237,7 @@ def download_and_play_video(
         thumbnail,
         play_interlude_after=play_interlude_after,
     )
-
+    print(exit_code, repeat)
     # If repeat mode is enabled and video ended normally, play all cached videos on repeat
     if repeat and exit_code == 0:
         write_log_to_client("Repeat mode: starting cache playback loop")
@@ -290,7 +291,12 @@ def handle_playlist(playlist_url: str, loop: bool, repeat: bool):
         if not loop:
             if args.interlude:
                 interlude_lock.release()
-            break
+        # If repeat mode is enabled and video ended normally, play all cached videos on repeat
+        if not loop and repeat and result == 0:
+            write_log_to_client("Repeat mode: starting cache playback loop")
+            handle_cache_play(repeat=True)
+        else:
+            return
 
 
 def _get_url_type(url: str):
@@ -333,7 +339,7 @@ def handle_cache_play(repeat:bool=False):
 
             # if the video ended on its own, continue to the next video, otherwise break out of the loop
             if response != 0:
-                return 
+                break 
 
 
 def run_hls_stream():
