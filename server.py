@@ -94,11 +94,12 @@ def create_ffmpeg_stream(
     title=None,
     thumbnail=None,
     play_interlude_after=True,
+    repeat=False
 ):
     if video_path is None:
         logging.info("video_path is None. ffmpeg_stream cancelled.")
         return 2
-    
+
     if (stop_all_videos()):
 
         time.sleep(5)
@@ -136,7 +137,7 @@ def create_ffmpeg_stream(
         bufsize=1,
     )
 
-    current_video_dict.clear()  
+    current_video_dict.clear()
     if None not in [title, thumbnail]:
         current_video_dict["title"] = title
         current_video_dict["thumbnail"] = thumbnail
@@ -218,7 +219,7 @@ def download_next_video_in_list(playlist, current_index):
 
 
 def download_and_play_video(
-    url, loop, title=None, thumbnail=None, play_interlude_after=True
+    url, loop, repeat=False, title=None, thumbnail=None, play_interlude_after=True
 ):
     video_path = video_cache.find(Cache.get_video_id(url))
     if video_path is None:
@@ -227,7 +228,7 @@ def download_and_play_video(
         video_path = video_cache.find(Cache.get_video_id(url))
         write_log_to_client(f"Downloaded {url} to {video_path}")
     stop_all_videos()
-    return create_ffmpeg_stream(
+    exit_code = create_ffmpeg_stream(
         video_path,
         State.PLAYING,
         loop,
@@ -236,8 +237,15 @@ def download_and_play_video(
         play_interlude_after=play_interlude_after,
     )
 
+    # If repeat mode is enabled and video ended normally, play all cached videos on repeat
+    if repeat and exit_code == 0:
+        write_log_to_client("Repeat mode: starting cache playback loop")
+        handle_cache_play(repeat=True)
 
-def handle_playlist(playlist_url: str, loop: bool):
+    return exit_code
+
+
+def handle_playlist(playlist_url: str, loop: bool, repeat: bool):
     playlist = Playlist(playlist_url)
     # Stop interlude
     while True:
@@ -300,30 +308,82 @@ def _get_url_type(url: str):
             return UrlType.UNKNOWN
 
 
-def handle_cache_play():
+def handle_cache_play(repeat:bool=False):
     # Get all the videos in the cache
     cache_videos = video_cache.video_id_to_path
 
     # Loop through each video in the cache
-    for _, video in cache_videos.items():
+    while True:
 
-        # Store the current playing video information
-        current_video_dict["title"] = video.title
-        current_video_dict["thumbnail"] = video.thumbnail
+        for _, video in cache_videos.items():
 
-        # Get the file path of the video to stream
-        file_path = video.file_path
-        response = create_ffmpeg_stream(
-            file_path,
-            State.PLAYING,
-            loop=False,
-            title=video.title,
-            thumbnail=video.thumbnail,
+            # Store the current playing video information
+            current_video_dict["title"] = video.title
+            current_video_dict["thumbnail"] = video.thumbnail
+
+            # Get the file path of the video to stream
+            file_path = video.file_path
+            response = create_ffmpeg_stream(
+                file_path,
+                State.PLAYING,
+                loop=False,
+                title=video.title,
+                thumbnail=video.thumbnail,
+            )
+
+            # if the video ended on its own, continue to the next video, otherwise break out of the loop
+            if response != 0:
+                return 
+
+
+def run_hls_stream():
+    playlist_path = Path(args.hls_file_path)
+    playlist_path.parent.mkdir(parents=True, exist_ok=True)
+    while True:
+        ffmpeg_cmd = [
+            "ffmpeg",
+            "-i", args.rtmp_stream_url,
+            "-c:v", "copy",
+            "-c:a", "copy",
+            "-f", "hls",
+            "-hls_time", "4",
+            "-hls_list_size", "5",
+            "-hls_flags", "delete_segments",
+            f"{args.hls_file_path}/tv.m3u8",
+        ]
+        proc = subprocess.Popen(
+            ffmpeg_cmd,
+            stdout=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+        )
+        logging.info(f"HLS process started with pid {proc.pid}")
+        # start the logging thread (non-blocking)
+        threading.Thread(
+            target=_monitor_ffmpeg, args=(proc,), daemon=True
+        ).start()
+        # wait until a playback thread ends
+        hls_lock.acquire()
+        # rotate: kill, clean, loop
+        logging.info(f"hls_lock acquired, stopping pid {proc.pid}")
+        kill_child_processes(proc.pid)
+        _clean_hls_dir()
+
+def _monitor_ffmpeg(proc: subprocess.Popen):
+    """Block until proc dies and log exit / stderr."""
+    exit_code = proc.wait()
+    if exit_code == 0:
+        logging.info(f"HLS ffmpeg exited cleanly (code 0)")
+    else:
+        err = proc.stderr.read().decode(errors="replace")
+        logging.error(
+            f"HLS ffmpeg exited with code {exit_code}\n---- STDERR ----\n{err}"
         )
 
-        # if the video ended on its own, continue to the next video, otherwise break out of the loop
-        if response != 0:
-            break
+def _clean_hls_dir():
+    hls_dir = Path(args.hls_file_path)
+    for f in hls_dir.glob("*.ts"):
+        f.unlink(missing_ok=True)
 
 # --- SSE Log Broadcasting Integration ---
 
@@ -435,21 +495,20 @@ async def play(url: str, loop: bool = False):
         MetricsHandler.video_count.inc()
 
         # Check the type of URL and start the appropriate thread
-        if url_type == UrlType.PLAYLIST:
+        if url_type == UrlType.VIDEO:
+            video = YouTube(url)
+            t = threading.Thread(
+                target=download_and_play_video,
+                args=(url, loop, video.title, video.thumbnail_url),
+            )
+            t.start()
+
+        elif url_type == UrlType.PLAYLIST:
             t = threading.Thread(
                 target=handle_playlist,
                 args=(url, loop),
             )
             t.start()
-            return {"detail": "Success"}
-
-        # if url_type == UrlType.VIDEO:
-        video = YouTube(url)
-        t = threading.Thread(
-            target=download_and_play_video,
-            args=(url, loop, video.title, video.thumbnail_url),
-        )
-        t.start()
 
         return {"detail": "Success"}
 

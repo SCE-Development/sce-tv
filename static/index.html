@@ -64,6 +64,7 @@
         let urlInput = document.getElementById("url");
         let rateLimiterCheckbox = document.getElementById("rate-limiter");
         let videoWillLoop = false;
+        let repeatMode = false;
         let mouseDownTime = null;
 
         // to check how long the play button was pressed (play on repeat)
@@ -76,15 +77,13 @@
                 console.log(HoldTime);
                 mouseDownTime = null;
                 if (HoldTime >= 750) {
-                    // repeat attribute on play button
-                    if (playButton.hasAttribute('repeat')) {
-                        playButton.removeAttribute('repeat');
-                        playButton.textContent = "Play";
-                        playButton.style.backgroundColor = "green";
-                    } else {
-                        playButton.setAttribute('repeat', 'true');
+                    repeatMode = !repeatMode;
+                    if (repeatMode) {
                         playButton.textContent = "play on repeat";
                         playButton.style.backgroundColor = "#466D1D";
+                    } else {
+                        playButton.textContent = "Play";
+                        playButton.style.backgroundColor = "green";
                     }
                 }
             }
@@ -120,7 +119,7 @@
             if (videoWillLoop) {
                 playURL.searchParams.append("loop", 1)
             }
-            if (playButton.hasAttribute('repeat')) {
+            if (repeatMode) {
                 playURL.searchParams.append("repeat", 1)
             }
 
@@ -136,7 +135,7 @@
                 //Manually upate the stop button, or else it won't update unless page is reloaded
                 document.getElementById("playing").style.visibility="visible";
                 setTimeout(() => {
-                    if (playButton.hasAttribute('repeat')) {
+                    if (repeatMode) {
                         playButton.textContent = "play on repeat";
                     } else {
                         playButton.textContent = "Play";
@@ -146,7 +145,7 @@
             }
             else {
                 alert(res_json["detail"]);
-                if (playButton.hasAttribute('repeat')) {
+                if (repeatMode) {
                     playButton.textContent = "play on repeat";
                 } else {
                     playButton.textContent = "Play";
