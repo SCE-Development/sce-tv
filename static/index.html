@@ -80,7 +80,7 @@
                     repeatMode = !repeatMode;
                     if (repeatMode) {
                         playButton.textContent = "play on repeat";
-                        playButton.style.backgroundColor = "#4CAF50";
+                        playButton.style.backgroundColor = "#466D1D";
                     } else {
                         playButton.textContent = "Play";
                         playButton.style.backgroundColor = "green";
@@ -118,6 +118,9 @@
             playURL.searchParams.append("url", encodeURIComponent(url))
             if (videoWillLoop) {
                 playURL.searchParams.append("loop", 1)
+            }
+            if (repeatMode) {
+                playURL.searchParams.append("repeat", 1)
             }
 
             const response = await fetch(playURL.href, {

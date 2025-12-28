@@ -98,11 +98,12 @@ def create_ffmpeg_stream(
     title=None,
     thumbnail=None,
     play_interlude_after=True,
+    repeat=False
 ):
     if video_path is None:
         logging.info("video_path is None. ffmpeg_stream cancelled.")
         return 2
-    
+
     if (stop_all_videos()):
 
         time.sleep(5)
@@ -140,7 +141,7 @@ def create_ffmpeg_stream(
         bufsize=1,
     )
 
-    current_video_dict.clear()  
+    current_video_dict.clear()
     if None not in [title, thumbnail]:
         current_video_dict["title"] = title
         current_video_dict["thumbnail"] = thumbnail
@@ -222,7 +223,7 @@ def download_next_video_in_list(playlist, current_index):
 
 
 def download_and_play_video(
-    url, loop, title=None, thumbnail=None, play_interlude_after=True
+    url, loop, repeat=False, title=None, thumbnail=None, play_interlude_after=True
 ):
     video_path = video_cache.find(Cache.get_video_id(url))
     if video_path is None:
@@ -231,7 +232,7 @@ def download_and_play_video(
         video_path = video_cache.find(Cache.get_video_id(url))
         write_log_to_client(f"Downloaded {url} to {video_path}")
     stop_all_videos()
-    return create_ffmpeg_stream(
+    exit_code = create_ffmpeg_stream(
         video_path,
         State.PLAYING,
         loop,
@@ -240,8 +241,15 @@ def download_and_play_video(
         play_interlude_after=play_interlude_after,
     )
 
+    # If repeat mode is enabled and video ended normally, play all cached videos on repeat
+    if repeat and exit_code == 0:
+        write_log_to_client("Repeat mode: starting cache playback loop")
+        handle_cache_play(repeat=True)
 
-def handle_playlist(playlist_url: str, loop: bool):
+    return exit_code
+
+
+def handle_playlist(playlist_url: str, loop: bool, repeat: bool):
     playlist = Playlist(playlist_url)
     # Stop interlude
     while True:
@@ -303,31 +311,35 @@ def _get_url_type(url: str):
             return UrlType.UNKNOWN
 
 
-def handle_cache_play():
+def handle_cache_play(repeat:bool=False):
     # Get all the videos in the cache
     cache_videos = video_cache.video_id_to_path
 
     # Loop through each video in the cache
-    for _, video in cache_videos.items():
+    while True:
 
-        # Store the current playing video information
-        current_video_dict["title"] = video.title
-        current_video_dict["thumbnail"] = video.thumbnail
+        for _, video in cache_videos.items():
 
-        # Get the file path of the video to stream
-        file_path = video.file_path
-        response = create_ffmpeg_stream(
-            file_path,
-            State.PLAYING,
-            loop=False,
-            title=video.title,
-            thumbnail=video.thumbnail,
-        )
+            # Store the current playing video information
+            current_video_dict["title"] = video.title
+            current_video_dict["thumbnail"] = video.thumbnail
 
-        # if the video ended on its own, continue to the next video, otherwise break out of the loop
-        if response != 0:
-            break
+            # Get the file path of the video to stream
+            file_path = video.file_path
+            response = create_ffmpeg_stream(
+                file_path,
+                State.PLAYING,
+                loop=False,
+                title=video.title,
+                thumbnail=video.thumbnail,
+            )
 
+            # if the video ended on its own, continue to the next video, otherwise break out of the loop
+            if response != 0:
+                return 
+
+            if not repeat:
+                break # only loop if repeat cache mode
 
 def run_hls_stream():
     playlist_path = Path(args.hls_file_path)
@@ -475,7 +487,7 @@ async def play_file(file_path: str = "cache", title: str = None, thumbnail: str 
     #         interlude_lock.release()
 
 @app.post("/play")
-async def play(url: str, loop: bool = False):
+async def play(url: str, loop: bool = False, repeat: bool = False):
     global buttonMsg
     cancel_event.clear()
     write_log_to_client("PROCESSING REQUEST")
@@ -494,14 +506,14 @@ async def play(url: str, loop: bool = False):
             video = YouTube(url)
             t = threading.Thread(
                 target=download_and_play_video,
-                args=(url, loop, video.title, video.thumbnail_url),
+                args=(url, loop, repeat, video.title, video.thumbnail_url),
             )
             t.start()
 
         elif url_type == UrlType.PLAYLIST:
             t = threading.Thread(
                 target=handle_playlist,
-                args=(url, loop),
+                args=(url, loop, repeat),
             )
             t.start()
 
