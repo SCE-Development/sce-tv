@@ -64,6 +64,31 @@
         let urlInput = document.getElementById("url");
         let rateLimiterCheckbox = document.getElementById("rate-limiter");
         let videoWillLoop = false;
+        let mouseDownTime = null;
+
+        // hold click for repeat mode
+        playButton.addEventListener('mousedown', () => {
+            mouseDownTime = Date.now();
+        });
+        playButton.addEventListener('mouseup', () => {
+            if (mouseDownTime) {
+                const holdTime = Date.now() - mouseDownTime;
+                mouseDownTime = null;
+                if (holdTime >= 750) {
+                    // Toggle repeat attribute on play button
+                    if (playButton.hasAttribute('repeat')) {
+                        playButton.removeAttribute('repeat');
+                        playButton.textContent = "Play";
+                        playButton.style.backgroundColor = "green";
+                    } else {
+                        playButton.setAttribute('repeat', 'true');
+                        playButton.textContent = "Play on Repeat";
+                        playButton.style.backgroundColor = "#466D1D";
+                    }
+                }
+            }
+        });
+
         playButton.addEventListener("click", Play);
         loopButton.addEventListener("click", toggleLoopVideo);
         urlInput.addEventListener("input", OnUrlChange);
@@ -96,6 +121,9 @@
             if (videoWillLoop) {
                 playURL.searchParams.append("loop", 1)
             }
+            if (playButton.hasAttribute('repeat')) {
+                playURL.searchParams.append("repeat", 1)
+            }
 
             const response = await fetch(playURL.href, {
                 method: "POST",
@@ -109,13 +137,21 @@
                 //Manually upate the stop button, or else it won't update unless page is reloaded
                 document.getElementById("playing").style.visibility="visible";
                 setTimeout(() => {
-                    playButton.textContent = "Play";
+                    if (playButton.hasAttribute('repeat')) {
+                        playButton.textContent = "Play on Repeat";
+                    } else {
+                        playButton.textContent = "Play";
+                    }
                     playButton.disabled = false;
                 }, 2000);
             }
             else {
                 alert(res_json["detail"]);
-                playButton.textContent = "Play";
+                if (playButton.hasAttribute('repeat')) {
+                    playButton.textContent = "Play on Repeat";
+                } else {
+                    playButton.textContent = "Play";
+                }
             }
         }
 
