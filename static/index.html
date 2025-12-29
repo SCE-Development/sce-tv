@@ -16,9 +16,12 @@
         </div>
         <div class="card">
             <div style="display: flex; justify-content: center; align-items: center; flex-direction: column;">
-                <div style="display: flex; justify-content: center; align-items: center; padding-bottom: 10px;">
+                <div style="display: flex; justify-content: center; align-items: center; padding-bottom: 5px;">
                     <h2 id="cache_tag">SCE TV</h2>
+                </div>
+                <div style="display: flex; justify-content: center; align-items: center; padding-bottom: 10px;">
                     <button id="show-logs-btn">Show Logs</button>
+                    <button id="debug-btn">Debug</button>
                 </div>
             </div>
 
@@ -214,6 +217,12 @@
             // Scroll to bottom
             logsContent.scrollTop = logsContent.scrollHeight;
         }
+
+        // Adds a function to open the debug page in a new window when the debug button is clicked
+        document.getElementById("debug-btn").addEventListener("click", function () {
+            let debugURL = new URL(window.location.href + "debug")
+            window.open(debugURL);
+        });
     </script>
 </body>
 
