@@ -6,7 +6,7 @@ html {
 body {
     min-height: 100%;
     font-family: Arial, Helvetica, sans-serif;
-    background-image: url("lebron.jpg");
+    background-color: rgb(202, 202, 202);
     background-size: cover;
 }
 
@@ -69,6 +69,16 @@ input {
     padding: 8px 16px; 
     cursor: pointer; 
     margin-left: 10px;
+}
+
+#monitoring_icon {
+    border-radius: 50%;
+    background-color: dimgray;
+    margin-left: 10px;
+    height: 20px;
+    width: 20px;
+    display: inline-block;
+    border: 5px solid #262626;
 }
 
 .card {

@@ -32,19 +32,7 @@
           >
             <h2 id="cache_tag">SCE TV</h2>
             <button id="show-logs-btn">Show Logs</button>
-            <span
-              id="monitoring_icon"
-              style="
-                border-radius: 50%;
-                background-color: dimgray;
-                margin-left: 10px;
-                height: 20px;
-                width: 20px;
-                display: inline-block;
-                border: 5px solid #262626;
-              "
-            >
-            </span>
+            <span id="monitoring_icon"></span>
           </div>
         </div>
 
@@ -175,6 +163,8 @@
           document.getElementById("playing").style.display = "block";
           //Manually upate the stop button, or else it won't update unless page is reloaded
           document.getElementById("playing").style.visibility = "visible";
+          document.getElementById("monitoring_icon").style.backgroundColor =
+            "limegreen";
           setTimeout(() => {
             playButton.textContent = "Play";
             playButton.disabled = false;
@@ -190,6 +180,8 @@
         await fetch(stopURL.href, { method: "POST" });
         document.getElementById("metadata").style.visibility = "hidden";
         document.getElementById("playing").style.display = "none";
+        document.getElementById("monitoring_icon").style.backgroundColor =
+          "dimgray";
       }
       fetch(stateURL.href)
         .then((response) => response.json())
