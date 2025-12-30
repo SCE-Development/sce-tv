@@ -71,6 +71,9 @@ buttonMsg = "Play"
 
 cancel_event = threading.Event()
 
+#This stores the current stream status
+stream_status = 0
+
 # Create a cache object to store video files, initializing it with the file path specified in the command-line arguments or configuration settings. This instance is used to cache downloaded videos.
 video_cache = Cache(file_path=args.videopath, cache_file=args.cache_state_file)
 
@@ -99,6 +102,7 @@ def create_ffmpeg_stream(
     thumbnail=None,
     play_interlude_after=True,
 ):
+    global stream_status
     if video_path is None:
         logging.info("video_path is None. ffmpeg_stream cancelled.")
         return 2
@@ -149,6 +153,7 @@ def create_ffmpeg_stream(
     process_dict[video_type] = process.pid
     MetricsHandler.streams_count.labels(video_type=video_type.value).inc(amount=1)
     MetricsHandler.stream_state.labels(video_type=video_type.value).set(1)
+    stream_status = 1
     # the below function returns 0 if the video ended on its own
     # 137, 1
     exit_code = process.wait()
@@ -162,6 +167,7 @@ def create_ffmpeg_stream(
         process_dict.pop(video_type)
 
     MetricsHandler.stream_state.labels(video_type=video_type.value).set(0)
+    stream_status = 0
 
     if (exit_code == 0 or video_type == State.PLAYING) and play_interlude_after and args.interlude:
         interlude_lock.release()
@@ -588,6 +594,11 @@ async def getVideos():
         )
     return json.dumps(returnedResponse)
 
+@app.get("/get-stream-status")
+def get_stream_status():
+    global stream_status
+    return {"stream_status": stream_status}
+    
 
 @app.get("/metrics")
 def get_metrics():

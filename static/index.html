@@ -128,6 +128,53 @@
         addLogMessage(message.message);
       };
 
+      //retrieve stream status from server
+
+      const getStreamStatus = () => {
+        return fetch(
+          new URL(
+            window.location.pathname + "get-stream-status",
+            window.location.origin
+          ).href
+        )
+          .then((response) => response.json())
+          .then((data) => {
+            return data["stream_status"];
+          });
+      };
+
+      //update the monitoring icon based on stream status
+      const updateIcon = (status) => {
+        const icon = document.getElementById("monitoring_icon");
+        console.log("Updating icon with status:", status);
+        if (Number(status) === 1) {
+          icon.style.backgroundColor = "limegreen";
+        } else {
+          icon.style.backgroundColor = "dimgray";
+        }
+      };
+      //auto refresh function
+      const autoRefreshStatus = ({
+        dataFunction,
+        updateFunction,
+        interval = 5000,
+      }) => {
+        const execute = async () => {
+          dataFunction().then((data) => {
+            updateFunction(data);
+            setTimeout(execute, interval);
+          });
+        };
+
+        execute();
+      };
+
+      autoRefreshStatus({
+        dataFunction: getStreamStatus,
+        updateFunction: updateIcon,
+        interval: 5000,
+      });
+
       async function toggleLoopVideo() {
         videoWillLoop = !videoWillLoop;
         if (videoWillLoop) {
@@ -163,8 +210,6 @@
           document.getElementById("playing").style.display = "block";
           //Manually upate the stop button, or else it won't update unless page is reloaded
           document.getElementById("playing").style.visibility = "visible";
-          document.getElementById("monitoring_icon").style.backgroundColor =
-            "limegreen";
           setTimeout(() => {
             playButton.textContent = "Play";
             playButton.disabled = false;
@@ -180,14 +225,14 @@
         await fetch(stopURL.href, { method: "POST" });
         document.getElementById("metadata").style.visibility = "hidden";
         document.getElementById("playing").style.display = "none";
-        document.getElementById("monitoring_icon").style.backgroundColor =
-          "dimgray";
       }
       fetch(stateURL.href)
         .then((response) => response.json())
         .then((json) => {
           const state = json["state"];
           if (state === "playing") {
+            // document.getElementById("monitoring_icon").style.backgroundColor =
+            //   "limegreen";
             document.getElementById("urlInput").style.visibility = "hidden";
             document.getElementById("playing").style.visibility = "visible";
             document.getElementById("title").innerHTML =
@@ -250,6 +295,8 @@
           if (state === "interlude") {
             document.getElementById("metadata").style.visibility = "hidden";
             document.getElementById("playing").style.display = "none";
+            // document.getElementById("monitoring_icon").style.backgroundColor =
+            //   "dimgray";
           } else {
             document.getElementById("metadata").style.visibility = "visible";
             document.getElementById("playing").style.display = "block";
@@ -257,6 +304,8 @@
               json["nowPlaying"]["title"];
             document.getElementById("thumbnail").src =
               json["nowPlaying"]["thumbnail"];
+            // document.getElementById("monitoring_icon").style.backgroundColor =
+            //   "limegreen";
           }
         });
 
