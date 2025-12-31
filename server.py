@@ -11,7 +11,8 @@ import ssl
 import time
 from pathlib import Path
 import asyncio  # Add this import for async queues
-from typing import List  # Add this import for type hinting
+from dataclasses import dataclass
+from typing import List
 
 ssl._create_default_https_context = ssl._create_stdlib_context
 
@@ -217,26 +218,34 @@ def download_next_video_in_list(playlist, current_index):
         video_cache.add(video_url)
 
 
-def download_and_play_video(
-    url, loop, title=None, thumbnail=None, play_interlude_after=True, repeat=False
-):
-    video_path = video_cache.find(Cache.get_video_id(url))
+@dataclass
+class VideoConfig:
+    url: str
+    loop: bool = False
+    title: str = None
+    thumbnail: str = None
+    play_interlude_after: bool = True
+    repeat: bool = False
+
+
+def download_and_play_video(config: VideoConfig):
+    video_path = video_cache.find(Cache.get_video_id(config.url))
     if video_path is None:
-        write_log_to_client(f"Downloading {url} to disk")
-        video_cache.add(url)
-        video_path = video_cache.find(Cache.get_video_id(url))
-        write_log_to_client(f"Downloaded {url} to {video_path}")
+        write_log_to_client(f"Downloading {config.url} to disk")
+        video_cache.add(config.url)
+        video_path = video_cache.find(Cache.get_video_id(config.url))
+        write_log_to_client(f"Downloaded {config.url} to {video_path}")
     stop_all_videos()
     exit_code = create_ffmpeg_stream(
         video_path,
         State.PLAYING,
-        loop,
-        title,
-        thumbnail,
-        play_interlude_after=play_interlude_after,
+        config.loop,
+        config.title,
+        config.thumbnail,
+        play_interlude_after=config.play_interlude_after,
     )
     # If repeat mode is enabled and video ended normally, play all cached videos on repeat
-    if repeat and exit_code == 0:
+    if config.repeat and exit_code == 0:
         write_log_to_client("Repeat mode: starting cache playback loop")
         handle_cache_play(repeat=True)
     return exit_code
@@ -267,13 +276,13 @@ def handle_playlist(playlist_url: str, loop: bool, repeat: bool = False):
                 daemon=True,
             )
             t.start()
-            result = download_and_play_video(
-                video_url,
+            result = download_and_play_video(VideoConfig(
+                url=video_url,
                 loop=False,
                 title=video.title,
                 thumbnail=video.thumbnail_url,
                 play_interlude_after=False,
-            )
+            ))
             if result == 2:
                 logging.info(
                     f"Video {video_url} failed to download, skipping to next video in playlist"
@@ -460,9 +469,17 @@ async def play(url: str, loop: bool = False, repeat: bool = False):
 
         # if url_type == UrlType.VIDEO:
         video = YouTube(url)
+        config = VideoConfig(
+            url=url,
+            loop=loop,
+            title=video.title,
+            thumbnail=video.thumbnail_url,
+            play_interlude_after=True,
+            repeat=repeat,
+        )
         t = threading.Thread(
             target=download_and_play_video,
-            args=(url, loop, video.title, video.thumbnail_url, True, repeat),
+            args=(config,),
         )
         t.start()
 
