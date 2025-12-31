@@ -149,8 +149,14 @@
         console.log("Updating icon with status:", status);
         if (Number(status) === 1) {
           icon.style.backgroundColor = "limegreen";
+          document.getElementById("metadata").style.visibility = "visible";
+          document.getElementById("playing").style.display = "block";
+          document.getElementById("urlInput").style.visibility = "hidden";
         } else {
           icon.style.backgroundColor = "dimgray";
+          document.getElementById("metadata").style.visibility = "hidden";
+          document.getElementById("playing").style.display = "none";
+          document.getElementById("urlInput").style.visibility = "visible";
         }
       };
       //auto refresh function
