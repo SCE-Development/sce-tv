@@ -220,7 +220,10 @@
 
         // Adds a function to open the debug page in a new window when the debug button is clicked
         document.getElementById("debug-btn").addEventListener("click", function () {
-            const debugURL = new URL(window.location.href + (window.location.href.endsWith('/') ? "" : "/") + "debug")
+            const debugURL = new URL(window.location.origin + window.location.pathname);
+            debugURL.pathname = debugURL.pathname.endsWith('/') 
+            ? `${debugURL.pathname}debug` 
+            : `${debugURL.pathname}/debug`;
             window.open(debugURL);
         });
     </script>
