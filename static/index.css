@@ -71,6 +71,17 @@ input {
     margin-left: 10px;
 }
 
+#debug-btn{
+    height: 2.2em; 
+    background-color: orange; 
+    color: white; 
+    border: none; 
+    border-radius: 4px; 
+    padding: 8px 16px; 
+    cursor: pointer; 
+    margin-left: 10px;
+}
+
 .card {
     background: hsla(0, 0%, 31%, 0.7);
     border-radius: 12px;
