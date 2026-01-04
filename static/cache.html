@@ -7,6 +7,11 @@
 <body>
   <button id="go_back_btn">Go back to main page</button>
   <h1>SCE TV Cache</h1>
+  <h3>Cache Storage</h3>
+  <div id="cacheStorageInfo">
+    <p><strong>Used:</strong> <span id="usedBytes">Loading...</span></p>
+    <p><strong>Available:</strong> <span id="availableBytes">Loading...</span></p>
+  </div>
   <button id="playEntireDirectoryBtn">play entire directory</button>
   <!-- Video -->
   <div id="listOfVideosContainer" >
@@ -17,7 +22,7 @@
             window.location.href = window.location.href.substring(0, url.lastIndexOf('/') )
 
           });
-
+          let debugUrl = new URL("debug", window.location.href)
           async function togglePlayVideo(e, video) {
                   try {
                     e.preventDefault();
@@ -79,6 +84,28 @@
             alert(response["detail"]);
           }  
         }
+z
+          function formatBytes(bytes) {
+            if (bytes === 0) return '0 bytes';
+            const sizes = ['bytes', 'kb', 'mb', 'gb', 'tb'];
+            const i = Math.floor(Math.log(bytes) / Math.log(1024));
+            return parseFloat((bytes / Math.pow(1024, i)).toFixed(2)) + ' ' + sizes[i];
+          }
+
+          async function handleBytes() {
+            try{
+              const response = await fetch(debugUrl.href)
+              const data = await response.json()
+              let usedBytes = data.cache.current_size_bytes
+              let availableBytes = data.cache.max_size_bytes - usedBytes
+              document.getElementById('usedBytes').textContent = formatBytes(usedBytes) + " used " + "(" + usedBytes + " bytes)";
+              document.getElementById('availableBytes').textContent = formatBytes(availableBytes)  + " available " + "(" + availableBytes + " bytes)" ;
+            } catch(error){
+              console.log(error)
+              document.getElementById('usedBytes').textContent = 'error loading';
+              document.getElementById('availableBytes').textContent = 'error loading';
+            }
+          }
 
           function parseResponse(data) {
             // Store the returned object in a variable
@@ -121,6 +148,8 @@
               videoContainer.appendChild(videoTitleContainer);
               videoContainer.appendChild(playButton);
               listOfVideosContainer.appendChild(videoContainer);
+
+              
         }}
   </script>
   
@@ -132,6 +161,7 @@
       .catch(error => {
         console.error('Error:', error);
       });
+      handleBytes()
   </script>
 
 </body>
