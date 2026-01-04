@@ -80,6 +80,8 @@ class Cache:
         self.current_size_bytes += video_info.size_bytes
         MetricsHandler.cache_size.set(len(self.video_id_to_path))
         MetricsHandler.cache_size_bytes.set(self.current_size_bytes)
+        if self.cache_file:
+            self.write_cache()
 
     def find(self, video_id: str):
         if video_id in self.video_id_to_path:
