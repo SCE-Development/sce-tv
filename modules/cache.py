@@ -80,6 +80,8 @@ class Cache:
         self.current_size_bytes += video_info.size_bytes
         MetricsHandler.cache_size.set(len(self.video_id_to_path))
         MetricsHandler.cache_size_bytes.set(self.current_size_bytes)
+        if self.cache_file:
+            self.write_cache()
 
     def find(self, video_id: str):
         if video_id in self.video_id_to_path:
@@ -97,6 +99,8 @@ class Cache:
             removed_video_info = self.video_id_to_path.popitem(last=False)[1]
             self.current_size_bytes -= removed_video_info.size_bytes
             os.remove(removed_video_info.file_path)
+        if self.cache_file:
+            self.write_cache()
 
     def clear(self):
         self._downsize_cache_to_target_bytes(0)
