@@ -123,6 +123,7 @@ z
               const videoImg = document.createElement('img');
               const videoTitle = document.createElement('p');
               const playButton = document.createElement('button');
+              const videoSize = document.createElement('span');
               const playEntireDirectoryBtn = document.getElementById('playEntireDirectoryBtn');
 
               videoContainer.id = "videoContainer";
@@ -130,11 +131,13 @@ z
               videoTitleContainer.id = "videoTitleContainer";
               playButton.id = element.id;
               playButton.className = "playButton";
+              videoSize.className = "videoSize";
 
               videoTitle.textContent = element.name;
               videoImg.src = element.thumbnail;
               videoImg.alt = "thumbnail";
               playButton.textContent = 'play';
+              videoSize.textContent = formatBytes(element.size_bytes);
         
               playButton.addEventListener('click', (e) => {
                 handlePlayButton(e, element)
@@ -146,6 +149,7 @@ z
               videoTitleContainer.appendChild(videoTitle);
               videoContainer.appendChild(videoImgContainer);
               videoContainer.appendChild(videoTitleContainer);
+              videoContainer.appendChild(videoSize);
               videoContainer.appendChild(playButton);
               listOfVideosContainer.appendChild(videoContainer);
 
