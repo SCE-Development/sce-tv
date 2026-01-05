@@ -544,13 +544,17 @@ async def stop():
 @app.get("/list")
 async def getVideos():
     returnedResponse = []
+    file_size = 0
     for key, value in video_cache.video_id_to_path.items():
+        if os.path.exists(value.file_path):
+            file_size = os.path.getsize(value.file_path)
         returnedResponse.append(
             {
                 "id": key,
                 "name": value.title,
                 "path": value.file_path,
                 "thumbnail": value.thumbnail,
+                "size_bytes": file_size,
             }
         )
     return json.dumps(returnedResponse)
