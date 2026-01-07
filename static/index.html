@@ -71,10 +71,8 @@
             fetch(stateURL.href)
                 .then(r => r.json())
                 .then(json => {
-                console.log("Initial state:", json);
                 addLogMessage("INITIAL_STATE=" + JSON.stringify(json));
                 })
-                .catch(err => console.error("state fetch failed:", err));
             });
         let mouseDownTime = null;
 
@@ -105,9 +103,7 @@
         loopButton.addEventListener("click", toggleLoopVideo);
         urlInput.addEventListener("input", OnUrlChange);
 
-        console.log("SSE Test: Listening for messages...");
         const eventSource = new EventSource(new URL(window.location.pathname + "events", window.location.origin).href);
-        console.log("SSE Test: EventSource created");
         eventSource.onmessage = (event) => {
             const message = JSON.parse(event.data);
             addLogMessage(message.message);
@@ -218,7 +214,6 @@
         fetch(stateURL.href)
             .then(r => r.json())
             .then(json => {
-                console.log("state payload:", json);
 
                 const state = json?.state;
                 if (state !== "playing") {
