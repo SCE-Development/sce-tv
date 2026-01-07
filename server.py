@@ -442,10 +442,10 @@ async def play_file(file_path: str = "cache", title: str = None, thumbnail: str 
 @app.post("/play")
 async def play(url: str, loop: bool = False, repeat: bool = False):
     cancel_event.clear()
-    write_log_to_client("PROCESSING REQUEST for " + url)
     # Decode URL
     url = unquote(url)
-
+    write_log_to_client("PROCESSING REQUEST for " + url)
+    
     # Start thread to download video, stream it, and provide a response
     try:
 
