@@ -144,7 +144,7 @@
                 document.getElementById("playing").style.visibility="visible";
 
                 // Display message if video is already in cache
-                if (res_json["in_cache"]) {
+                if (!!res_json.in_cache) {
                     document.getElementById("cacheStatus").style.display="inline";
                     setTimeout(() => {
                         document.getElementById("cacheStatus").style.display="none";
