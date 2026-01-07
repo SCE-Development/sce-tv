@@ -265,7 +265,7 @@ def stop_all_videos():
 
 
 # terminate a parent process and all its child processes using a specified signal.
-def kill_child_processes(parent_pid, sig=signal.SIGKILL):
+def kill_child_processes(parent_pid, sig=signal.SIGILL):
     try:
         parent = psutil.Process(parent_pid)
         parent.send_signal(sig)
@@ -549,14 +549,20 @@ async def state():
     return result
 
 
+<<<<<<< HEAD
 @app.post("/file/play/")
 async def play_file(file_path: str = None, title: str = None, thumbnail: str = None):
+=======
+@app.post("/play/file")
+async def play_file(file_path: str = "cache", title: str = None, thumbnail: str = None, loop: bool = False):
+>>>>>>> aca99f7 (Added looping feature to cache videos)
     try:
         # Check if playing cache or a disk directory/file
         if file_path == "cache":
             threading.Thread(target=handle_cache_play).start()
             return {"detail": "Success"}
 
+<<<<<<< HEAD
         if file_path is None:
             file_path = args.videopath
         if os.path.isdir(file_path):
@@ -600,6 +606,19 @@ async def play_file(file_path: str = None, title: str = None, thumbnail: str = N
                     thumbnail,
                 ),
             ).start()
+=======
+        # Start a thread to play a single video in the cache
+        threading.Thread(
+            target=create_ffmpeg_stream,
+            args=(
+                file_path,
+                State.PLAYING,
+                loop,
+                title,
+                thumbnail,
+            ),
+        ).start()
+>>>>>>> aca99f7 (Added looping feature to cache videos)
 
         return {"detail": "Success"}
 
