@@ -477,13 +477,18 @@ async def play(url: str, loop: bool = False, repeat: bool = False):
             play_interlude_after=True,
             repeat=repeat,
         )
+
+        cache_status = True
+        video_path = video_cache.find(Cache.get_video_id(url))
+        if video_path is None:
+            cache_status = False
         t = threading.Thread(
             target=download_and_play_video,
             args=(config,),
         )
         t.start()
 
-        return {"detail": "Success"}
+        return {"detail": "Success", "in_cache": cache_status}
 
     # If download is unsuccessful, give response and reason
     except pytubefix.exceptions.AgeRestrictedError:
