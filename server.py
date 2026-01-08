@@ -142,14 +142,14 @@ def create_ffmpeg_stream(
         current_video_dict["title"] = title
         current_video_dict["thumbnail"] = thumbnail
 
-    logging.info(f"process {process.pid} started for {video_type.value} video: {video_path}")
+    logging.info(f"Process {process.pid} started for {video_type.value} video: {video_path}")
     process_dict[video_type] = process.pid
     MetricsHandler.streams_count.labels(video_type=video_type.value).inc(amount=1)
     MetricsHandler.stream_state.labels(video_type=video_type.value).set(1)
     # the below function returns 0 if the video ended on its own
     # 137, 1
     exit_code = process.wait()
-    logging.info(f"process {process.pid} exited with code {exit_code}")
+    logging.info(f"Process {process.pid} exited with code {exit_code}")
     write_log_to_client(f"Process {process.pid} started for {video_type.value} video: {video_path}")
 
     MetricsHandler.subprocess_count.labels(
@@ -162,7 +162,7 @@ def create_ffmpeg_stream(
 
     if (exit_code == 0 or video_type == State.PLAYING) and play_interlude_after and args.interlude:
         interlude_lock.release()
-    logging.info(f"process {process.pid} exited with code {exit_code}")
+    logging.info(f"Process {process.pid} exited with code {exit_code}")
     write_log_to_client(f"Process {process.pid} exited with code {exit_code}")
 
     return exit_code
@@ -252,30 +252,49 @@ def download_and_play_video(config: VideoConfig):
 
 
 def handle_playlist(playlist_url: str, loop: bool, repeat: bool = False):
+    logging.info("Function handle_playlist started")
     playlist = Playlist(playlist_url)
     result = 0
     # Stop interlude
     while True:
         for i in range(len(playlist)):
+            # Stop playlist
             if cancel_event.is_set():
                 logging.info("Playlist stop flag set, exiting playlist thread")
                 write_log_to_client("Playlist stop flag set, exiting playlist thread")
                 if args.interlude:
                     interlude_lock.release()
                 return
+            
+            # Get video information
             video_url = playlist[i]
+            logging.info(f"Playlist video URL: {video_url}")
             video = YouTube(video_url)
-            # Only play age-unrestricted videos to avoid exceptions
+            
+            # Skip age-restricted videos to avoid exceptions
             if video.age_restricted:
                 logging.info(f"Skipping age-restricted video: {video_url}")
                 write_log_to_client(f"Skipping age-restricted video: {video_url}")
                 continue
+            
+            # Download the next video in the playlist
+            logging.info("Create new thread for downloading next video")
             t = threading.Thread(
                 target=download_next_video_in_list,
                 args=(playlist, i),
                 daemon=True,
             )
+            logging.info("Start new thread for downloading next video")
             t.start()
+            
+            # Download and play current video
+            logging.info("Download and play current video")
+            logging.info("=== CURRENT VIDEO INFO ===")
+            logging.info(f"{video_url}")
+            logging.info(f"{video.title}")
+            logging.info(f"{video.thumbnail_url}")
+            logging.info(f"Video Object: {video}")
+            logging.info("==================")
             result = download_and_play_video(VideoConfig(
                 url=video_url,
                 loop=False,
@@ -283,17 +302,20 @@ def handle_playlist(playlist_url: str, loop: bool, repeat: bool = False):
                 thumbnail=video.thumbnail_url,
                 play_interlude_after=False,
             ))
+            logging.info("AFTER Download and play current video")
+            
+            # Exit Codes
+            logging.info(f"EXIT CODE: {result}")
             if result == 2:
-                logging.info(
-                    f"Video {video_url} failed to download, skipping to next video in playlist"
-                )
+                logging.info(f"Video {video_url} failed to download, skipping to next video in playlist")
+                write_log_to_client(f"Video {video_url} failed to download, skipping to next video in playlist")
                 continue
-            if result != 0:
-                # exit the entire thread routine if the video we just played was killed
-                logging.info(f"playlist routine recieved code {result}, exiting")
-                if args.interlude:
-                    interlude_lock.release()
-                return
+            # if result != 0:
+            #     # exit the entire thread routine if the video we just played was killed
+            #     logging.info(f"Playlist routine recieved code {result}, exiting")
+            #     if args.interlude:
+            #         interlude_lock.release()
+            #     return
         if not loop:
             if args.interlude:
                 interlude_lock.release()
@@ -302,17 +324,18 @@ def handle_playlist(playlist_url: str, loop: bool, repeat: bool = False):
                 write_log_to_client("Repeat mode: starting cache playback loop")
                 handle_cache_play(repeat=True)
             break
-
+    logging.info("End of function: handle_playlist")
 
 def _get_url_type(url: str):
+    logging.info("_get_url_type is running")
     try:
         playlist = pytubefix.Playlist(url)
-        logging.debug(f"{url} is a playlist with {len(playlist)} videos")
+        logging.info(f"{url} is a playlist with {len(playlist)-1} videos")
         return UrlType.PLAYLIST
     except:
         try:
             pytubefix.YouTube(url)
-            logging.debug(f"{url} is a video")
+            logging.info(f"{url} is a video")
             return UrlType.VIDEO
         except:
             logging.error(f"url {url} is not a playlist or video!")
@@ -460,15 +483,23 @@ async def play(url: str, loop: bool = False, repeat: bool = False):
 
         # Check the type of URL and start the appropriate thread
         if url_type == UrlType.PLAYLIST:
+            logging.info("URL is a playlist")
             t = threading.Thread(
                 target=handle_playlist,
                 args=(url, loop, repeat),
             )
+            logging.info("Thread Start")
             t.start()
             return {"detail": "Success"}
 
         # if url_type == UrlType.VIDEO:
         video = YouTube(url)
+        logging.info("=== CURRENT VIDEO INFO ===")
+        logging.info(f"Video Object: {video}")
+        logging.info(f"Video URL: {url}")
+        logging.info(f"Video Title: {video.title}")
+        logging.info(f"Video Thumbnail URL: {video.thumbnail_url}")
+        logging.info("==========================")
         config = VideoConfig(
             url=url,
             loop=loop,
