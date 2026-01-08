@@ -39,6 +39,9 @@
                 <button type="button" id="loop" style="background-color: blue;">Loop Video?</button>
                 <button type="button" id="play" style="background-color: green;">Play</button>
             </div>
+            <div id="cacheStatus" style="display: none; color: white; font-weight: bold; padding-top: 10px;">
+                Nice, the video is already cached!
+            </div>
         </div>
         <input type="checkbox" id="rate-limiter" style="visibility: hidden;">
         <div id="playing">
@@ -139,6 +142,15 @@
                 document.getElementById("playing").style.display = "block";
                 //Manually upate the stop button, or else it won't update unless page is reloaded
                 document.getElementById("playing").style.visibility="visible";
+
+                // Display message if video is already in cache
+                if (!!res_json.in_cache) {
+                    document.getElementById("cacheStatus").style.display="inline";
+                    setTimeout(() => {
+                        document.getElementById("cacheStatus").style.display="none";
+                    }, 3000);
+                }
+
                 setTimeout(() => {
                     if (playButton.hasAttribute('repeat')) {
                         playButton.textContent = "Play on Repeat";
