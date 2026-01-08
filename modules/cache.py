@@ -36,10 +36,9 @@ class Cache:
         self.video_id_to_path = OrderedDict()
 
     def add(self, url: str):
-        video = YouTube(url)
-        # Download video of set resolution
+        yt = YouTube(url)
         video = (
-            video.streams.filter(
+            yt.streams.filter(
                 resolution="360p",
                 progressive=True,
             )
@@ -47,6 +46,17 @@ class Cache:
             .desc()
             .first()
         )
+        # for shorts get any progressive stream
+        if video is None:
+            video = (
+                yt.streams.filter(progressive=True)
+                .order_by("resolution")
+                .asc()
+                .first()
+            )
+        if video is None:
+            logging.error(f"No suitable stream found for {url}")
+            return None
         if video.filesize > self.max_size_bytes:
             logging.info(
                 f"Video size ({video.filesize} bytes) exceeds max cache size ({self.max_size_bytes} bytes). Caching cancelled."
@@ -67,8 +77,8 @@ class Cache:
         logging.info(f"downloaded {url} to path {video_file_path}")
         video_info = VideoInfo(
             file_path=video_file_path,
-            thumbnail=YouTube(url).thumbnail_url,
-            title=YouTube(url).title,
+            thumbnail=yt.thumbnail_url,
+            title=yt.title,
             size_bytes=video.filesize,
         )
         self.video_id_to_path[video_id] = video_info
@@ -156,5 +166,9 @@ class Cache:
     @staticmethod
     def get_video_id(url) -> str:
         parsed_url = urlparse(url)
+        # handled yt shorts URL format: youtube.com/shorts/id
+        if "/shorts/" in parsed_url.path:
+            return parsed_url.path.split("/shorts/")[1].split("?")[0]
+        # handled regular URL format: youtube.com/watch?v=VIDEO_ID
         video_id = parse_qs(parsed_url.query)["v"][0]
         return video_id

@@ -111,7 +111,8 @@ def create_ffmpeg_stream(
         "-i",
         video_path,
         "-vf",
-        f"scale=640:360",
+        # this helps the shorts to actually be vertical and not compressed 
+        "scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2",
         "-c:v",
         "libx264",
         "-preset",
