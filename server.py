@@ -64,6 +64,8 @@ current_video_dict = {}
 
 interlude_lock = threading.Lock()
 
+download_lock = threading.Lock()
+
 args = get_args()
 
 cancel_event = threading.Event()
@@ -208,14 +210,37 @@ def handle_interlude():
         create_ffmpeg_stream(args.interlude, State.INTERLUDE, loop=True)
 
 
+# Downloads video and returns the video path
+def download_video(config: "VideoConfig"):
+    with download_lock:
+        # Attempt to find video in cache
+        video_path = video_cache.find(Cache.get_video_id(config.url))
+        # Download video if not in cache
+        if video_path is None:
+            write_log_to_client(f"Downloading {config.url} to disk")
+            try:
+                video_cache.add(config.url)
+            except Exception as e:
+                write_log_to_client(f"Failed to download {config.url}: {e}")
+                raise
+            # Get video path of downloaded video
+            video_path = video_cache.find(Cache.get_video_id(config.url))
+            if video_path is not None:
+                write_log_to_client(f"Downloaded {config.url} to {video_path}")
+            else:
+                write_log_to_client(f"Failed to download {config.url}")
+    return video_path
+
 def download_next_video_in_list(playlist, current_index):
-    next_index = current_index + 1
-    if next_index == (len(playlist)):
-        next_index = 0
-    video_url = playlist[next_index]
-    if video_cache.find(Cache.get_video_id(video_url)) is None:
-        write_log_to_client(f"Downloading next video in playlist: {video_url}")
-        video_cache.add(video_url)
+    with download_lock:
+        next_index = current_index + 1
+        # Loop Playlist
+        if next_index == (len(playlist)):
+            next_index = 0
+        video_url = playlist[next_index]
+        if video_cache.find(Cache.get_video_id(video_url)) is None:
+            write_log_to_client(f"Downloading next video in playlist: {video_url}")
+            video_cache.add(video_url)
 
 
 @dataclass
@@ -229,15 +254,8 @@ class VideoConfig:
 
 
 def download_and_play_video(config: VideoConfig):
-    # Attempt to find video in cache
-    video_path = video_cache.find(Cache.get_video_id(config.url))
-    # Download video if not in cache
-    if video_path is None:
-        write_log_to_client(f"Downloading {config.url} to disk")
-        video_cache.add(config.url)
-        video_path = video_cache.find(Cache.get_video_id(config.url))
-        write_log_to_client(f"Downloaded {config.url} to {video_path}")
-    
+    # Download video
+    video_path = download_video(config)
     # Stop any existing streams before starting new one to prevent conflicts
     stop_all_videos()
     # Start stream
