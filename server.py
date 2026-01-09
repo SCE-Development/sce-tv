@@ -231,16 +231,20 @@ def download_video(config: "VideoConfig"):
                 write_log_to_client(f"Failed to download {config.url}")
     return video_path
 
-def download_next_video_in_list(playlist, current_index):
-    with download_lock:
-        next_index = current_index + 1
-        # Loop Playlist
-        if next_index == (len(playlist)):
-            next_index = 0
-        video_url = playlist[next_index]
-        if video_cache.find(Cache.get_video_id(video_url)) is None:
-            write_log_to_client(f"Downloading next video in playlist: {video_url}")
-            video_cache.add(video_url)
+# Downloads the next video in a playlist
+def download_next_video_in_playlist(playlist, current_index):
+    next_index = current_index + 1
+    # Loop Playlist
+    if next_index == (len(playlist)):
+        next_index = 0
+    video_url = playlist[next_index]
+    try:
+        write_log_to_client(f"Attempting Prefetch: {video_url}")
+        logging.info(f"Attempting Prefetch: {video_url}")
+        download_video(VideoConfig(url=video_url,play_interlude_after=False))
+    except:
+      write_log_to_client(f'Prefetch failed: {video_url}')
+      logging.info(f'Prefetch failed: {video_url}')
 
 
 @dataclass
@@ -253,6 +257,7 @@ class VideoConfig:
     repeat: bool = False
 
 
+# Plays the video downloaded from download_video()
 def download_and_play_video(config: VideoConfig):
     # Download video
     video_path = download_video(config)
@@ -302,7 +307,7 @@ def handle_playlist(playlist_url: str, loop: bool, repeat: bool = False):
             
             # Download the next video in the playlist
             t = threading.Thread(
-                target=download_next_video_in_list,
+                target=download_next_video_in_playlist,
                 args=(playlist, i),
                 daemon=True,
             )
@@ -490,7 +495,6 @@ async def play(url: str, loop: bool = False, repeat: bool = False):
     
     # Start thread to download video, stream it, and provide a response
     try:
-
         # Get the type of URL (VIDEO, PLAYLIST, UNKNOWN)
         url_type = _get_url_type(url)
         logging.info(f"{url} is a {url_type}")
