@@ -229,13 +229,18 @@ class VideoConfig:
 
 
 def download_and_play_video(config: VideoConfig):
+    # Attempt to find video in cache
     video_path = video_cache.find(Cache.get_video_id(config.url))
+    # Download video if not in cache
     if video_path is None:
         write_log_to_client(f"Downloading {config.url} to disk")
         video_cache.add(config.url)
         video_path = video_cache.find(Cache.get_video_id(config.url))
         write_log_to_client(f"Downloaded {config.url} to {video_path}")
+    
+    # Stop any existing streams before starting new one to prevent conflicts
     stop_all_videos()
+    # Start stream
     exit_code = create_ffmpeg_stream(
         video_path,
         State.PLAYING,
@@ -278,23 +283,22 @@ def handle_playlist(playlist_url: str, loop: bool, repeat: bool = False):
                 continue
             
             # Download the next video in the playlist
-            logging.info("Create new thread for downloading next video")
             t = threading.Thread(
                 target=download_next_video_in_list,
                 args=(playlist, i),
                 daemon=True,
             )
-            logging.info("Start new thread for downloading next video")
+            logging.info("THREAD START: Start new thread for downloading next video")
             t.start()
             
             # Download and play current video
-            logging.info("Download and play current video")
             logging.info("=== CURRENT VIDEO INFO ===")
             logging.info(f"{video_url}")
             logging.info(f"{video.title}")
             logging.info(f"{video.thumbnail_url}")
             logging.info(f"Video Object: {video}")
-            logging.info("==================")
+            logging.info("==========================")
+            logging.info("THREAD START: Download and play current video")
             result = download_and_play_video(VideoConfig(
                 url=video_url,
                 loop=False,
@@ -302,7 +306,10 @@ def handle_playlist(playlist_url: str, loop: bool, repeat: bool = False):
                 thumbnail=video.thumbnail_url,
                 play_interlude_after=False,
             ))
-            logging.info("AFTER Download and play current video")
+            
+            # Wait for download next video thread to terminate.
+            t.join()
+            logging.info("THREAD ENDED: Download next video thread finished.")
             
             # Exit Codes
             logging.info(f"EXIT CODE: {result}")
@@ -310,12 +317,6 @@ def handle_playlist(playlist_url: str, loop: bool, repeat: bool = False):
                 logging.info(f"Video {video_url} failed to download, skipping to next video in playlist")
                 write_log_to_client(f"Video {video_url} failed to download, skipping to next video in playlist")
                 continue
-            # if result != 0:
-            #     # exit the entire thread routine if the video we just played was killed
-            #     logging.info(f"Playlist routine recieved code {result}, exiting")
-            #     if args.interlude:
-            #         interlude_lock.release()
-            #     return
         if not loop:
             if args.interlude:
                 interlude_lock.release()
