@@ -230,11 +230,7 @@ def handle_interlude():
 
 # Worker thread for downloading videos.
 def download_video_worker():
-    logging.info("THREAD START: download_video_worker")
-    counter = 0
     while True:
-        logging.info(f"download_video_worker iteration {counter}")
-        counter += 1
         # Get the config from the queue
         config = download_url_queue.get()
         # Download
@@ -247,7 +243,6 @@ def download_video_worker():
 
 # Downloads video and returns the video path
 def download_video(config: VideoConfig):
-    logging.info("download_video called")
     with download_lock:
         # Attempt to find video in cache
         video_path = video_cache.find(Cache.get_video_id(config.url))
@@ -277,6 +272,7 @@ def play_video_worker(config: VideoConfig):
         try:
             # Get the video info from queue and return exit code
             logging.info(f"Playing {video_path}")
+            write_log_to_client(f"Playing {video_path}")
             # Log exit code
             exit_code = play_video(video_path, config)
             logging.info(f"EXIT CODE: {exit_code}")
@@ -321,7 +317,6 @@ def download_url_types(config: VideoConfig):
 # Adds individual video configurations from a playlist into queue
 def add_playlist_videos_to_download_queue(playlist, config: VideoConfig):
     for i in range(len(playlist)):
-        logging.info(f"Added video number to queue: {i}")
         # Get video information
         video_url = playlist[i]
         # Change config information into individual video
@@ -337,7 +332,6 @@ def add_playlist_videos_to_download_queue(playlist, config: VideoConfig):
 
 
 def _get_url_type(url: str):
-    logging.info("_get_url_type is running")
     try:
         playlist = pytubefix.Playlist(url)
         logging.info(f"{url} is a playlist with {len(playlist)} videos")
