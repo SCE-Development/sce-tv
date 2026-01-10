@@ -276,14 +276,12 @@ def download_video(config: VideoConfig):
 # Worker Thread for video playing.
 def play_video_worker(config: VideoConfig):
     while True:
+        # Get the video info from queue, play video, and log exit code
         config, video_path = play_video_queue.get()
-        if video_path is None:
-            continue
         try:
-            # Get the video info from queue and return exit code
+            if video_path is None:
+                continue
             logging.info(f"Playing {video_path}")
-            write_log_to_client(f"Playing {video_path}")
-            # Log exit code
             exit_code = play_video(video_path, config)
             logging.info(f"EXIT CODE: {exit_code}")
         finally:
