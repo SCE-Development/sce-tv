@@ -248,6 +248,16 @@ def download_video(config: VideoConfig):
         video_path = video_cache.find(Cache.get_video_id(config.url))
         # Download video if not in cache
         if video_path is None:
+            # Check age restriction
+            try:
+                video = YouTube(config.url)
+                if video.age_restricted:
+                    write_log_to_client(f"Skipping age-restricted video: {config.url}")
+                    logging.info(f"Skipping age-restricted video: {config.url}")
+                    return None
+            except Exception as e:
+                write_log_to_client(f"Failed to check video {config.url}: {e}")
+                raise
             write_log_to_client(f"Downloading {config.url} to disk")
             try:
                 video_cache.add(config.url)
