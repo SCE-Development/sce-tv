@@ -56,6 +56,7 @@ class UrlType(enum.Enum):
 # Video Configuration
 @dataclass
 class VideoConfig:
+    url_type: UrlType
     url: str
     loop: bool = False
     title: str = None
@@ -86,10 +87,10 @@ cancel_event = threading.Event()
 video_cache = Cache(file_path=args.videopath, cache_file=args.cache_state_file)
 
 # Queue for video downloading
-url_queue = Queue()
+download_url_queue: Queue[VideoConfig] = Queue()
 
 # Queue for completed videos
-video_queue = Queue()
+play_video_queue = Queue()
 
 # Enable CORS
 app.add_middleware(
@@ -200,12 +201,11 @@ def stop_video_by_type(video_type: State):
         return True
     return False
 
-#stop_all_videos should also return a boolean, from what stop_video_by_type returned
+# stop_all_videos should also return a boolean, from what stop_video_by_type returned
 def stop_all_videos():
     return stop_video_by_type(State.INTERLUDE) or stop_video_by_type(State.PLAYING)
-    
 
- 
+
 # terminate a parent process and all its child processes using a specified signal.
 def kill_child_processes(parent_pid, sig=signal.SIGKILL):
     try:
@@ -227,26 +227,30 @@ def handle_interlude():
         # Check if the interlude stream is already running
         create_ffmpeg_stream(args.interlude, State.INTERLUDE, loop=True)
 
-# Queue System for downloading videos
-def download_video_queue():
-    logging.info("function call: download_video_queue")
+
+# Worker thread for downloading videos.
+def download_video_worker():
+    logging.info("THREAD START: download_video_worker")
+    counter = 0
     while True:
-        # Get the config from the queue and download
-        config = url_queue.get()
+        logging.info(f"download_video_worker iteration {counter}")
+        counter += 1
+        # Get the config from the queue
+        config = download_url_queue.get()
+        # Download
         try:
-          video_path = download_video(config)
-          video_queue.put((config,video_path))
+            video_path = download_video(config)
+            play_video_queue.put((config, video_path))
         finally:
-            url_queue.task_done()
-        
+            download_url_queue.task_done()
+
 
 # Downloads video and returns the video path
 def download_video(config: VideoConfig):
-    logging.info("Function call: download_video")
+    logging.info("download_video called")
     with download_lock:
         # Attempt to find video in cache
         video_path = video_cache.find(Cache.get_video_id(config.url))
-        
         # Download video if not in cache
         if video_path is None:
             write_log_to_client(f"Downloading {config.url} to disk")
@@ -262,150 +266,81 @@ def download_video(config: VideoConfig):
             else:
                 write_log_to_client(f"Failed to download {config.url}")
         return video_path
-    
-    # Plays the video. Handles differently depending on whether it is a video or a playlist
-def play_video(url_type: UrlType, config: VideoConfig):
+
+
+# Worker Thread for video playing.
+def play_video_worker(config: VideoConfig):
     while True:
-        logging.info("Function call: play_video")
-        if url_type == UrlType.PLAYLIST:
-            handle_playlist(config)
-        if url_type == UrlType.VIDEO:
-            config, video_path = video_queue.get()
+        config, video_path = play_video_queue.get()
+        if video_path is None:
+            continue
+        try:
+            # Get the video info from queue and return exit code
             logging.info(f"Playing {video_path}")
-            try:
-                # Stop any existing streams before starting new one to prevent conflicts
-                stop_all_videos()
-                # Start stream
-                exit_code = create_ffmpeg_stream(
-                    video_path,
-                    State.PLAYING,
-                    config.loop,
-                    config.title,
-                    config.thumbnail,
-                    play_interlude_after=config.play_interlude_after,
-                )
-                # If repeat mode is enabled and video ended normally, play all cached videos on repeat
-                if config.repeat and exit_code == 0:
-                    write_log_to_client("Repeat mode: starting cache playback loop")
-                    handle_cache_play(repeat=True)
-            finally:
-                video_queue.task_done()
-            return exit_code
+            # Log exit code
+            exit_code = play_video(video_path, config)
+            logging.info(f"EXIT CODE: {exit_code}")
+        finally:
+            play_video_queue.task_done()
 
-# Downloads the next video in a playlist
-def download_next_video_in_playlist(playlist, current_index):
-    next_index = current_index + 1
-    # Loop Playlist
-    if next_index == (len(playlist)):
-        next_index = 0
-    video_url = playlist[next_index]
+
+# Plays a video
+def play_video(video_path: str, config: VideoConfig):
     try:
-        write_log_to_client(f"Attempting Prefetch: {video_url}")
-        logging.info(f"Attempting Prefetch: {video_url}")
-        download_video(VideoConfig(url=video_url,play_interlude_after=False))
-    except:
-      write_log_to_client(f'Prefetch failed: {video_url}')
-      logging.info(f'Prefetch failed: {video_url}')
+        # Stop any existing streams before starting new one to prevent conflicts
+        stop_all_videos()
+        # Start stream
+        exit_code = create_ffmpeg_stream(
+            video_path,
+            State.PLAYING,
+            config.loop,
+            config.title,
+            config.thumbnail,
+            play_interlude_after=config.play_interlude_after,
+        )
+        # If repeat mode is enabled and video ended normally, play all cached videos on repeat
+        if config.repeat and exit_code == 0:
+            write_log_to_client("Repeat mode: starting cache playback loop")
+            handle_cache_play(repeat=True)
+        return exit_code
+    except Exception:
+        write_log_to_client("Error playing video")
 
 
-# Plays the video downloaded from download_video()
-def download_and_play_video(config: VideoConfig):
-    # Download video
-    video_path = download_video(config)
-    # Stop any existing streams before starting new one to prevent conflicts
-    stop_all_videos()
-    # Start stream
-    exit_code = create_ffmpeg_stream(
-        video_path,
-        State.PLAYING,
-        config.loop,
-        config.title,
-        config.thumbnail,
-        play_interlude_after=config.play_interlude_after,
-    )
-    # If repeat mode is enabled and video ended normally, play all cached videos on repeat
-    if config.repeat and exit_code == 0:
-        write_log_to_client("Repeat mode: starting cache playback loop")
-        handle_cache_play(repeat=True)
-    return exit_code
+# Handle video downloading based on URL type (VIDEO, PLAYLIST)
+def download_url_types(config: VideoConfig):
+    if config.url_type == UrlType.PLAYLIST:
+        # Loop to add all individual video URLs in a playlist into the queue
+        playlist = Playlist(config.url)
+        add_playlist_videos_to_download_queue(playlist, config)
+    if config.url_type == UrlType.VIDEO:
+        # Add single video to queue
+        download_url_queue.put(config)
 
 
-def handle_playlist(playlist_url: str, loop: bool, repeat: bool = False):
-    logging.info("Function handle_playlist started")
-    playlist = Playlist(playlist_url)
-    result = 0
-    # Stop interlude
-    while True:
-        for i in range(len(playlist)):
-            # Stop playlist
-            if cancel_event.is_set():
-                logging.info("Playlist stop flag set, exiting playlist thread")
-                write_log_to_client("Playlist stop flag set, exiting playlist thread")
-                if args.interlude:
-                    interlude_lock.release()
-                return
-            
-            # Get video information
-            video_url = playlist[i]
-            logging.info(f"Playlist video URL: {video_url}")
-            video = YouTube(video_url)
-            
-            # Skip age-restricted videos to avoid exceptions
-            if video.age_restricted:
-                logging.info(f"Skipping age-restricted video: {video_url}")
-                write_log_to_client(f"Skipping age-restricted video: {video_url}")
-                continue
-            
-            # Download the next video in the playlist
-            t = threading.Thread(
-                target=download_next_video_in_playlist,
-                args=(playlist, i),
-                daemon=True,
-            )
-            logging.info("THREAD START: Start new thread for downloading next video")
-            t.start()
-            
-            # Download and play current video
-            logging.info("=== CURRENT VIDEO INFO ===")
-            logging.info(f"{video_url}")
-            logging.info(f"{video.title}")
-            logging.info(f"{video.thumbnail_url}")
-            logging.info(f"Video Object: {video}")
-            logging.info("==========================")
-            logging.info("THREAD START: Download and play current video")
-            result = download_and_play_video(VideoConfig(
-                url=video_url,
-                loop=False,
-                title=video.title,
-                thumbnail=video.thumbnail_url,
-                play_interlude_after=False,
-            ))
-            
-            # Wait for download next video thread to terminate.
-            t.join()
-            logging.info("THREAD ENDED: Download next video thread finished.")
-            
-            # Exit Codes
-            logging.info(f"EXIT CODE: {result}")
-            if result == 2:
-                logging.info(f"Video {video_url} failed to download, skipping to next video in playlist")
-                write_log_to_client(f"Video {video_url} failed to download, skipping to next video in playlist")
-                continue
-        if not loop:
-            if args.interlude:
-                interlude_lock.release()
-            # If repeat mode is enabled and playlist ended normally, play all cached videos on repeat
-            if repeat and result == 0:
-                write_log_to_client("Repeat mode: starting cache playback loop")
-                handle_cache_play(repeat=True)
-            break
-    logging.info("End of function: handle_playlist")
+# Adds individual video configurations from a playlist into queue
+def add_playlist_videos_to_download_queue(playlist, config: VideoConfig):
+    for i in range(len(playlist)):
+        logging.info(f"Added video number to queue: {i}")
+        # Get video information
+        video_url = playlist[i]
+        # Change config information into individual video
+        individual_video_config = VideoConfig(
+            url_type=UrlType.VIDEO,
+            url=video_url,
+            loop=config.loop,
+            play_interlude_after=config.play_interlude_after,
+            repeat=config.repeat,
+        )
+        # Put videos into queue
+        download_url_queue.put(individual_video_config)
+
 
 def _get_url_type(url: str):
     logging.info("_get_url_type is running")
     try:
         playlist = pytubefix.Playlist(url)
-        logging.info(f"{url} is a playlist with {len(playlist)-1} videos")
+        logging.info(f"{url} is a playlist with {len(playlist)} videos")
         return UrlType.PLAYLIST
     except:
         try:
@@ -446,6 +381,7 @@ def handle_cache_play(repeat: bool = False):
         # If not in repeat mode, exit after one pass through the cache
         if not repeat:
             break
+
 
 # --- SSE Log Broadcasting Integration ---
 
@@ -537,51 +473,40 @@ async def play_file(file_path: str = "cache", title: str = None, thumbnail: str 
         logging.exception('unable to play file from cache')
         raise HTTPException(status_code=500, detail="check logs")
 
+
 @app.post("/play")
 async def play(url: str, loop: bool = False, repeat: bool = False):
     cancel_event.clear()
     # Decode URL
     url = unquote(url)
     write_log_to_client("PROCESSING REQUEST for " + url)
-    
+
+    # Get the type of URL (VIDEO, PLAYLIST, UNKNOWN)
+    url_type = _get_url_type(url)
+    logging.info(f"{url} is a {url_type}")
+    if url_type == UrlType.UNKNOWN:
+        raise HTTPException(status_code=400, detail="given url is of unknown type")
+
     # Config for generic url type (VIDEO, PLAYLIST)
     config = VideoConfig(
-            url=url,
-            loop=loop,
-            play_interlude_after=True,
-            repeat=repeat,
-        )
-    
+        url_type=url_type,
+        url=url,
+        loop=loop,
+        play_interlude_after=True,
+        repeat=repeat,
+    )
+
     # Start thread to download video, stream it, and provide a response
     try:
-        # Get the type of URL (VIDEO, PLAYLIST, UNKNOWN)
-        url_type = _get_url_type(url)
-        logging.info(f"{url} is a {url_type}")
-        if url_type == UrlType.UNKNOWN:
-            raise HTTPException(status_code=400, detail="given url is of unknown type")
-        
+
         # Add Video Config to Queue
-        url_queue.put(config)
+        download_url_types(config)
 
         # Update Metrics
         MetricsHandler.video_count.inc()
-        
-        # Create a thread for video playing
-        threading.Thread(target=play_video, args=(url_type, config)).start()
 
-        '''
-            TODO: Eventually this thread will not be needed
-        '''
-        # Check the type of URL and start the appropriate thread
-        if url_type == UrlType.PLAYLIST:
-            logging.info("URL is a playlist")
-            t = threading.Thread(
-                target=handle_playlist,
-                args=(url, loop, repeat),
-            )
-            logging.info("Thread Start")
-            t.start()
-            return {"detail": "Success"}
+        # Create a thread for video playing
+        threading.Thread(target=play_video_worker, args=(config,)).start()
 
         video_path = video_cache.find(Cache.get_video_id(url))
         in_cache = video_path is not None
@@ -597,9 +522,9 @@ async def play(url: str, loop: bool = False, repeat: bool = False):
     except pytubefix.exceptions.VideoUnavailable:
         raise HTTPException(status_code=404, detail="This video is unavailable :(")
     except Exception:
-        logging.exception('unable to play video from url')
+        logging.exception("unable to play video from url")
         raise HTTPException(status_code=500, detail="check logs")
-    
+
 
 @app.get("/metadata")
 def metadata(url: str):
@@ -685,10 +610,12 @@ def debug():
         "cache": vars(video_cache),
     }
 
+
 # Start worker thread on startup
 @app.on_event("startup")
 def startup():
-    threading.Thread(target=download_video_queue, daemon=True).start()
+    threading.Thread(target=download_video_worker, daemon=True).start()
+
 
 @app.on_event("shutdown")
 def signal_handler():
