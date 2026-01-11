@@ -172,7 +172,7 @@ def create_ffmpeg_stream(
         current_video_dict["title"] = title
         current_video_dict["thumbnail"] = thumbnail
 
-    logging.info(f"process {process.pid} started for {video_type.value} video: {file_path}")
+    logging.info(f"Process {process.pid} started for {video_type.value} video: {file_path}")
     process_dict[video_type] = process.pid
     MetricsHandler.streams_count.labels(video_type=video_type.value).inc(amount=1)
     MetricsHandler.stream_state.labels(video_type=video_type.value).set(1)
@@ -190,7 +190,7 @@ def create_ffmpeg_stream(
     # the below function returns 0 if the video ended on its own
     # 137, 1
     exit_code = process.wait()
-    logging.info(f"process {process.pid} exited with code {exit_code}")
+    logging.info(f"Process {process.pid} exited with code {exit_code}")
     write_log_to_client(f"Process {process.pid} started for {video_type.value} video: {file_path}")
 
     MetricsHandler.subprocess_count.labels(
@@ -322,9 +322,6 @@ def play_video_worker():
 
 # Plays a video, returns exit code
 def play_video(video_path: str, config: VideoConfig):
-    logging.info(f"REPEAT MODE: {config.repeat}")
-    logging.info(f"LOOP MODE: {config.loop}")
-    logging.info(f"ITEMS IN QUEUE: {list(play_video_queue.queue)}")
     try:
         # Stop any existing streams
         stop_all_videos()
