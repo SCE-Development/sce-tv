@@ -156,7 +156,7 @@ def create_ffmpeg_stream(
                                             "textfile='/tmp/videos/announcement.txt':" 
                                             "fontsize=h/10: x=(w-text_w)/2: y=(h-text_h)/2")
 
-    # Loop the interlude stream
+    # Loop the video stream
     if loop:
         command[2:2] = ["-stream_loop", "-1"]
     process = subprocess.Popen(
@@ -291,11 +291,12 @@ def download_video(config: VideoConfig):
                 raise
             write_log_to_client(f"Downloading {config.url} to disk")
             try:
+                # Download video
                 video_cache.add(config.url)
             except Exception as e:
                 write_log_to_client(f"Failed to download {config.url}: {e}")
                 raise
-            # Get video path of downloaded video
+            # Get video path of downloaded video and log
             video_path = video_cache.find(Cache.get_video_id(config.url))
             if video_path is not None:
                 write_log_to_client(f"Downloaded {config.url} to {video_path}")
@@ -322,9 +323,10 @@ def play_video_worker():
 # Plays a video, returns exit code
 def play_video(video_path: str, config: VideoConfig):
     logging.info(f"REPEAT MODE: {config.repeat}")
+    logging.info(f"LOOP MODE: {config.loop}")
     logging.info(f"ITEMS IN QUEUE: {list(play_video_queue.queue)}")
     try:
-        # Stop any existing streams before starting new one to prevent conflicts
+        # Stop any existing streams
         stop_all_videos()
         # Start stream
         exit_code = create_ffmpeg_stream(
@@ -338,7 +340,7 @@ def play_video(video_path: str, config: VideoConfig):
         # If repeat mode is enabled and video ended normally, play all cached videos on repeat
         if config.repeat and exit_code == 0:
             write_log_to_client("Repeat Mode: Starting cache playback loop")
-            # Enqueue all cached videos for playback, similar to /play/file behavior
+            # Enqueue all cached videos
             for _, cached_video in video_cache.video_id_to_path.items():
                 play_video_queue.put((config, cached_video.file_path))
         # Clear queue when repeat mode is not enabled
@@ -396,9 +398,8 @@ def _get_url_type(url: str):
             return UrlType.UNKNOWN
 
 
-# Finds the video config of a video in the cache
-def find_cache(video):
-    # Store the current playing video information
+# Returns the video config of a video in the cache
+def get_cache_config(video):
     cache_video_config = VideoConfig(
         url_type=UrlType.VIDEO,
         url=None,
@@ -474,13 +475,17 @@ async def state():
 @app.post("/play/file")
 async def play_file(file_path: str = "cache", title: str = None, thumbnail: str = None):
     try:
+        # Stop all videos when pressing play, this also breaks out of video loops
+        stop_all_videos()
+        cancel_event.clear()
+
         # Check if we are going to play all videos or a single video in the cache
         if file_path == "cache":
             # Get all the videos in the cache
             cache_videos = video_cache.video_id_to_path
             for _, cached_video in cache_videos.items():
                 # Enqueue video config
-                cache_video_config = find_cache(cached_video)
+                cache_video_config = get_cache_config(cached_video)
                 play_video_queue.put((cache_video_config, cached_video.file_path))
             return {"detail": "Success"}
 
@@ -491,7 +496,7 @@ async def play_file(file_path: str = "cache", title: str = None, thumbnail: str 
             loop=False,
             title=title,
             thumbnail=thumbnail,
-            play_interlude_after=False
+            play_interlude_after=False,
         )
         play_video_queue.put((cache_video_config, file_path))
         return {"detail": "Success"}
@@ -502,7 +507,10 @@ async def play_file(file_path: str = "cache", title: str = None, thumbnail: str 
 
 @app.post("/play")
 async def play(url: str, loop: bool = False, repeat: bool = False):
+    # Stop all videos when pressing play, this also breaks out of video loops
+    stop_all_videos()
     cancel_event.clear()
+
     # Decode URL
     url = unquote(url)
     write_log_to_client("PROCESSING REQUEST for " + url)
@@ -522,9 +530,8 @@ async def play(url: str, loop: bool = False, repeat: bool = False):
         repeat=repeat,
     )
 
-    # Start thread to download video, stream it, and provide a response
+    # Start thread to download video
     try:
-
         # Add URL's video config to queue
         download_url_types(config)
 
@@ -667,7 +674,7 @@ async def play_text(announcement: str = None, duration: int = 5):
     ).start()
 
     return {"detail": "Success"}
-    
+
 
 @app.on_event("shutdown")
 def signal_handler():
