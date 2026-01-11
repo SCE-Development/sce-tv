@@ -274,7 +274,7 @@ def download_video(config: VideoConfig):
 
 
 # Worker Thread for video playing.
-def play_video_worker(config: VideoConfig):
+def play_video_worker():
     while True:
         # Get the video info from queue, play video, and log exit code
         config, video_path = play_video_queue.get()
@@ -507,9 +507,6 @@ async def play(url: str, loop: bool = False, repeat: bool = False):
         # Update Metrics
         MetricsHandler.video_count.inc()
 
-        # Create a thread for video playing
-        threading.Thread(target=play_video_worker, args=(config,)).start()
-
         video_path = video_cache.find(Cache.get_video_id(url))
         in_cache = video_path is not None
         return {"detail": "Success", "in_cache": in_cache}
@@ -617,6 +614,7 @@ def debug():
 @app.on_event("startup")
 def startup():
     threading.Thread(target=download_video_worker, daemon=True).start()
+    threading.Thread(target=play_video_worker, daemon=True).start()
 
 
 @app.on_event("shutdown")
