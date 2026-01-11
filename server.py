@@ -615,7 +615,7 @@ async def announcement():
 @app.post("/play/text")
 async def play_text(announcement: str = None, duration: int = 5):
     announcement = unquote(announcement)
-    with (open("/tmp/videos/announcement.txt", "w") as announcement_file):
+    with open("/tmp/videos/announcement.txt", "w") as announcement_file:
         announcement_file.write(announcement)
     # Start a thread to play the announcement
     threading.Thread(
