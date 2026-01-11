@@ -156,7 +156,7 @@ def create_ffmpeg_stream(
     MetricsHandler.streams_count.labels(video_type=video_type.value).inc(amount=1)
     MetricsHandler.stream_state.labels(video_type=video_type.value).set(1)
     
-    # If duration is nonnegative, the announcement is played indefinitely
+    # If duration is nonpositive, the announcement is played indefinitely
     # The loop checks every 0.5 secs to check if the subprocess has already exited
     # If the end of duration is reached, end the ffmpeg stream
     if announcement and duration > 0:
