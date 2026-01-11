@@ -110,15 +110,17 @@ async def http_request_count(request: Request, call_next):
 
 # return the result of process.wait()
 def create_ffmpeg_stream(
-    video_path: str,
+    file_path: str,
     video_type: State,
     loop=False,
     title=None,
     thumbnail=None,
     play_interlude_after=True,
+    announcement=False,
+    duration=5
 ):
-    if video_path is None:
-        logging.info("video_path is None. ffmpeg_stream cancelled.")
+    if file_path is None:
+        logging.info("file_path is None. ffmpeg_stream cancelled.")
         return 2
     
     if (stop_all_videos()):
@@ -130,7 +132,7 @@ def create_ffmpeg_stream(
         "ffmpeg",
         "-re",
         "-i",
-        video_path,
+        file_path,
         "-vf",
         f"scale=640:360",
         "-c:v",
@@ -147,6 +149,13 @@ def create_ffmpeg_stream(
         "flv",
         args.rtmp_stream_url,
     ]
+
+    if announcement:
+        command[2:2] = ["-loop", "1"]
+        command[command.index("-vf") + 1] += (",drawtext=expansion=none:fontfile=/usr/share/fonts/truetype/freefont/FreeSerif.ttf:" 
+                                            "textfile='/tmp/videos/announcement.txt':" 
+                                            "fontsize=h/10: x=(w-text_w)/2: y=(h-text_h)/2")
+
     # Loop the interlude stream
     if loop:
         command[2:2] = ["-stream_loop", "-1"]
@@ -163,15 +172,26 @@ def create_ffmpeg_stream(
         current_video_dict["title"] = title
         current_video_dict["thumbnail"] = thumbnail
 
-    logging.info(f"Process {process.pid} started for {video_type.value} video: {video_path}")
+    logging.info(f"process {process.pid} started for {video_type.value} video: {file_path}")
     process_dict[video_type] = process.pid
     MetricsHandler.streams_count.labels(video_type=video_type.value).inc(amount=1)
     MetricsHandler.stream_state.labels(video_type=video_type.value).set(1)
+    
+    # If duration is nonpositive, the announcement is played indefinitely
+    # The loop checks every 0.5 secs to check if the subprocess has already exited
+    # If the end of duration is reached, end the ffmpeg stream
+    if announcement and duration > 0:
+        for _ in range(duration*2):
+            if process.poll() is not None:
+                break
+            time.sleep(0.5)
+        kill_child_processes(process.pid)
+    
     # the below function returns 0 if the video ended on its own
     # 137, 1
     exit_code = process.wait()
-    logging.info(f"Process {process.pid} exited with code {exit_code}")
-    write_log_to_client(f"Process {process.pid} started for {video_type.value} video: {video_path}")
+    logging.info(f"process {process.pid} exited with code {exit_code}")
+    write_log_to_client(f"Process {process.pid} started for {video_type.value} video: {file_path}")
 
     MetricsHandler.subprocess_count.labels(
         exit_code=exit_code,
@@ -620,6 +640,34 @@ def startup():
     threading.Thread(target=download_video_worker, daemon=True).start()
     threading.Thread(target=play_video_worker, daemon=True).start()
 
+
+@app.get("/announcement")
+async def announcement():
+    return FileResponse("static/announcement.html")
+
+
+@app.post("/play/text")
+async def play_text(announcement: str = None, duration: int = 5):
+    announcement = unquote(announcement)
+    with open("/tmp/videos/announcement.txt", "w") as announcement_file:
+        announcement_file.write(announcement)
+    # Start a thread to play the announcement
+    threading.Thread(
+        target=create_ffmpeg_stream,
+        args=(
+            "/app/static/background.png",
+            State.PLAYING,
+            False,
+            "an announcement :)",
+            "background.png",
+            True,
+            True,
+            duration
+        )
+    ).start()
+
+    return {"detail": "Success"}
+    
 
 @app.on_event("shutdown")
 def signal_handler():
