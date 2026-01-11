@@ -527,7 +527,7 @@ async def play(url: str, loop: bool = False, repeat: bool = False):
         repeat=repeat,
     )
 
-    # Start thread to download video
+    # Submit video config to pipeline
     try:
         # Add URL's video config to queue
         download_url_types(config)
