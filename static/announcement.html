@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>SCE TV Announcement</title>
+  <link rel="stylesheet" href="announcement.css">
+</head>
+<body>
+  <button id="go_back_btn">Go back to main page</button>
+  <div>
+    <h1>Announcement</h1>
+    
+    <label class="lbl" for="announcement">Text:</label>
+    <textarea class="field"  id="announcement" rows="4" cols="50" placeholder="Hello, world!"></textarea>
+
+    <label class="lbl" for="duration">Duration (seconds):</label>
+    <input class="field" type="number" id="duration" value="5">
+
+    <button id="submit-btn">Submit</button>
+  </div>
+  
+    <script>
+        const baseURL = window.location.href.substring(0, window.location.href.lastIndexOf('/'));
+        document.getElementById('go_back_btn').addEventListener('click', () => {
+                window.location.href = baseURL;
+            });
+        
+        submitButton = document.getElementById("submit-btn");
+
+        submitButton.addEventListener("click", Play);
+
+        async function Play(e) {
+            e.preventDefault();
+            const txt = document.getElementById('announcement').value;
+            const duration = document.getElementById('duration').value;
+            if (txt === "" || duration === "") {
+                alert("Please fill out both the text and duration fields.")
+            } else {
+                let playURL = new URL(baseURL + "/play/text", window.location.origin);
+                playURL.searchParams.append("announcement", encodeURIComponent(txt));
+                playURL.searchParams.append("duration", encodeURIComponent(duration));
+                submitButton.textContent = "Success!";
+
+                const response = await fetch(playURL.href, {
+                    method: "POST",
+                });
+                const res_json = await response.json();
+
+                if (res_json["detail"] === "Success") {
+                    submitButton.textContent = "Success!";
+                    submitButton.disabled = true;
+
+                    setTimeout(() => {
+                        submitButton.textContent = "Submit";
+                        submitButton.disabled = false;
+                    }, 2000);
+                }
+                else {
+                    alert(res_json["detail"]);
+                    submitButton.textContent = "Play";
+                }
+            }
+        }
+    </script>
+</body>
+
+
