@@ -360,7 +360,7 @@ def download_url_types(config: VideoConfig):
 
 
 # Adds individual video configurations from a playlist into queue
-def add_playlist_videos_to_download_queue(playlist, config: VideoConfig):
+def add_playlist_videos_to_download_queue(playlist: Playlist, config: VideoConfig):
     for i in range(len(playlist)):
         # Get video information
         video_url = playlist[i]
@@ -527,6 +527,13 @@ async def play(url: str, loop: bool = False, repeat: bool = False):
         repeat=repeat,
     )
 
+    # Build the playlist before download for accurate cache checking
+    if url_type == UrlType.PLAYLIST:
+        try:
+          playlist_for_cache_check = Playlist(config.url)
+        except:
+          playlist_for_cache_check = None        
+
     # Submit video config to pipeline
     try:
         # Add URL's video config to queue
@@ -535,8 +542,22 @@ async def play(url: str, loop: bool = False, repeat: bool = False):
         # Update Metrics
         MetricsHandler.video_count.inc()
 
-        video_path = video_cache.find(Cache.get_video_id(url))
-        in_cache = video_path is not None
+        # Post cache status
+        # For playlists, "in cache" is defined as the entire playlist being in the cache
+        if url_type == UrlType.PLAYLIST:
+            if playlist_for_cache_check is None:
+              in_cache = False
+            else:
+                in_cache = True
+                # Check if every video in the playlist is cached
+                for video_url in playlist_for_cache_check:
+                    video_path = video_cache.find(Cache.get_video_id(video_url))
+                    if video_path is None:
+                        in_cache = False
+                        break
+        elif url_type == UrlType.VIDEO:
+            cached_video_path = video_cache.find(Cache.get_video_id(url))
+            in_cache = cached_video_path is not None
         return {"detail": "Success", "in_cache": in_cache}
 
     # If download is unsuccessful, give response and reason
