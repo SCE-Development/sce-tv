@@ -722,7 +722,7 @@ async def play_text(announcement: str = None, duration: int = 5):
             "/app/static/background.png",
             State.PLAYING,
             False,
-            "an announcement :)",
+            "(announcement) - \"" + announcement + "\"",
             "background.png",
             True,
             True,
