@@ -96,6 +96,12 @@ class Cache:
             os.remove(removed_video_info.file_path)
         if self.cache_file:
             self.write_cache()
+    
+    def delete(self, id: str):
+        removed_video_info = self.video_id_to_path.pop(id)
+        self.write_cache()
+        self.current_size_bytes -= removed_video_info.size_bytes
+        os.remove(removed_video_info.file_path)
 
     def clear(self):
         self._downsize_cache_to_target_bytes(0)

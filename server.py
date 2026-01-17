@@ -150,6 +150,7 @@ def create_ffmpeg_stream(
     if None not in [title, thumbnail]:
         current_video_dict["title"] = title
         current_video_dict["thumbnail"] = thumbnail
+        current_video_dict["file_path"] = file_path
 
     logging.info(f"process {process.pid} started for {video_type.value} video: {file_path}")
     process_dict[video_type] = process.pid
@@ -350,6 +351,7 @@ def handle_cache_play(repeat: bool = False):
             # Store the current playing video information
             current_video_dict["title"] = video.title
             current_video_dict["thumbnail"] = video.thumbnail
+            current_video_dict["file_path"] = video.file_path
 
             # Get the file path of the video to stream
             file_path = video.file_path
@@ -520,7 +522,17 @@ async def play(url: str, loop: bool = False, repeat: bool = False):
     except Exception:
         logging.exception('unable to play video from url')
         raise HTTPException(status_code=500, detail="check logs")
-    
+
+
+@app.post("/delete/file")
+async def delete_file(id: str):
+    try:
+        video_cache.delete(id)
+        return {"detail": "Success"}
+    except Exception:
+        logging.exception('unable to delete file from cache')
+        raise HTTPException(status_code=500, detail="check logs")
+
 
 @app.get("/metadata")
 def metadata(url: str):
