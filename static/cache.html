@@ -111,6 +111,7 @@
               const response = await deleteVideo(e, video);
               if (response["detail"] === "Success") {
                 videoContainer.remove();
+                handleBytes();
               } else {
                 alert(response["detail"]);
               }
