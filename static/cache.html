@@ -40,6 +40,19 @@
                   } 
             }
 
+          async function deleteVideo(e, video) {
+            try {
+              e.preventDefault();
+              const file_path = video.path;
+              let url = new URL("delete/file", window.location.href);
+              url.searchParams.append("id", video.id);
+              const response = await fetch(url.href, { method: "POST" });
+              return response.json();
+            } catch(error) {
+              console.log(error);
+            } 
+          }
+
           async function togglePlayEntireDirectory(e) {
             try {
               e.preventDefault()
@@ -69,22 +82,41 @@
             }  
           }
 
-          async function handlePlayButton(e, video) {
+          async function handlePlayButton(e, video, deleteButton) {
             const playButton = document.getElementById(video.id)
             const response = await togglePlayVideo(e, video)
             if (response["detail"] === "Success") {
             playButton.textContent = "Success!";
             playButton.disabled = true;
+            deleteButton.disabled = true;
             
             setTimeout(() => {
-              playButton.textContent = "Play";
+              playButton.textContent = "play";
               playButton.disabled = false;
             }, 2000);
           } else {
             alert(response["detail"]);
           }  
         }
-z
+          
+          async function handleDeleteButton(e, video, deleteButton, videoContainer) {
+            if (!deleteButton.classList.contains("delete-clicked")) {
+              deleteButton.classList.add("delete-clicked");
+              deleteButton.textContent = "confirm deletion?";
+              setTimeout(() => {
+                deleteButton.textContent = "delete";
+                deleteButton.classList.remove("delete-clicked");
+              }, 2000);
+            } else {
+              const response = await deleteVideo(e, video);
+              if (response["detail"] === "Success") {
+                videoContainer.remove();
+              } else {
+                alert(response["detail"]);
+              }
+            }
+          }
+
           function formatBytes(bytes) {
             if (bytes === 0) return '0 bytes';
             const sizes = ['bytes', 'kb', 'mb', 'gb', 'tb'];
@@ -114,47 +146,70 @@ z
               console.log("No videos found")
               document.getElementById('playEntireDirectoryBtn').disabled = true;
             }
-            // Loop through each element in the object and render it on the screen
-            for (const element of returnedObject) {
-              const listOfVideosContainer = document.getElementById('listOfVideosContainer');
-              const videoContainer = document.createElement('div');
-              const videoImgContainer = document.createElement('div');
-              const videoTitleContainer = document.createElement('div');
-              const videoImg = document.createElement('img');
-              const videoTitle = document.createElement('p');
-              const playButton = document.createElement('button');
-              const videoSize = document.createElement('span');
-              const playEntireDirectoryBtn = document.getElementById('playEntireDirectoryBtn');
+            // Fetch the state to determine which video is currently playing
+            let currentVideoPath;
+            const baseURL = window.location.href.substring(0, window.location.href.lastIndexOf('/'));
+            const stateURL = new URL(baseURL + "/state", window.location.origin);
+            fetch(stateURL.href).then((response) => response.json()).then((json) => {
+              const state = json["state"];
+              if (state === "playing") {
+                currentVideoPath = json["nowPlaying"]["file_path"];
+              }
+            }).then( () => {
+              // Loop through each element in the object and render it on the screen
+              for (const element of returnedObject) {
+                const listOfVideosContainer = document.getElementById('listOfVideosContainer');
+                const videoContainer = document.createElement('div');
+                const videoImgContainer = document.createElement('div');
+                const videoTitleContainer = document.createElement('div');
+                const videoImg = document.createElement('img');
+                const videoTitle = document.createElement('p');
+                const playButton = document.createElement('button');
+                const deleteButton = document.createElement('button');
+                const videoSize = document.createElement('span');
+                const playEntireDirectoryBtn = document.getElementById('playEntireDirectoryBtn');
 
-              videoContainer.id = "videoContainer";
-              videoImgContainer.id = "videoImgContainer";
-              videoTitleContainer.id = "videoTitleContainer";
-              playButton.id = element.id;
-              playButton.className = "playButton";
-              videoSize.className = "videoSize";
+                videoContainer.id = "videoContainer";
+                videoImgContainer.id = "videoImgContainer";
+                videoTitleContainer.id = "videoTitleContainer";
+                playButton.id = element.id;
+                playButton.className = "playButton";
+                deleteButton.className = "deleteButton";
+                videoSize.className = "videoSize";
 
-              videoTitle.textContent = element.name;
-              videoImg.src = element.thumbnail;
-              videoImg.alt = "thumbnail";
-              playButton.textContent = 'play';
-              videoSize.textContent = formatBytes(element.size_bytes);
-        
-              playButton.addEventListener('click', (e) => {
-                handlePlayButton(e, element)
-              });
+                videoTitle.textContent = element.name;
+                videoImg.src = element.thumbnail;
+                videoImg.alt = "thumbnail";
+                playButton.textContent = 'play';
+                deleteButton.textContent = 'delete';
+                videoSize.textContent = formatBytes(element.size_bytes);
+                
+                if (element.path === currentVideoPath) {
+                  deleteButton.disabled = true;
+                }
+          
+                playButton.addEventListener('click', (e) => {
+                  handlePlayButton(e, element, deleteButton);
+                });
 
-              playEntireDirectoryBtn.addEventListener('click', handlePlayEntireDirectoryButton);
+                deleteButton.addEventListener('click', (e) => {
+                  handleDeleteButton(e, element, deleteButton, videoContainer);
+                });
 
-              videoImgContainer.appendChild(videoImg);
-              videoTitleContainer.appendChild(videoTitle);
-              videoContainer.appendChild(videoImgContainer);
-              videoContainer.appendChild(videoTitleContainer);
-              videoContainer.appendChild(videoSize);
-              videoContainer.appendChild(playButton);
-              listOfVideosContainer.appendChild(videoContainer);
+                playEntireDirectoryBtn.addEventListener('click', handlePlayEntireDirectoryButton);
 
-              
-        }}
+                videoImgContainer.appendChild(videoImg);
+                videoTitleContainer.appendChild(videoTitle);
+                videoContainer.appendChild(videoImgContainer);
+                videoContainer.appendChild(videoTitleContainer);
+                videoContainer.appendChild(videoSize);
+                videoContainer.appendChild(playButton);
+                videoContainer.appendChild(deleteButton);
+                listOfVideosContainer.appendChild(videoContainer);
+    
+              }
+            })
+          }
   </script>
   
   <script>

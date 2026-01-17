@@ -2,7 +2,7 @@ body {
   overflow-x: hidden;
 }
 #videoContainer {
-  width: 50%;
+  width: 60%;
   height: 100px;
   border: 1px solid #ccc;
   display: flex;
@@ -43,4 +43,10 @@ body {
 }
 .playButton {
   width: 10%;
+}
+.deleteButton {
+  width: 12%;
+}
+.delete-clicked {
+  background-color: #f06565;
 }
