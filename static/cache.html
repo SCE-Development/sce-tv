@@ -112,6 +112,9 @@
               if (response["detail"] === "Success") {
                 videoContainer.remove();
                 handleBytes();
+                if (document.getElementById('listOfVideosContainer').childElementCount === 0) {
+                  document.getElementById('playEntireDirectoryBtn').disabled = true;
+                }
               } else {
                 alert(response["detail"]);
               }
