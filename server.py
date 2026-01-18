@@ -43,6 +43,7 @@ logging.getLogger("uvicorn.error").setLevel(logging.WARNING)
 
 # Enum for the state of the video being processed
 class State(enum.Enum):
+    IDLE = 'idle'
     INTERLUDE = "interlude"
     PLAYING = "playing"
 
@@ -77,6 +78,9 @@ current_video_dict = {}
 
 # Threading Locks
 interlude_lock = threading.Lock()
+
+state_lock = threading.Lock()
+last_state_snapshot = None
 
 download_lock = threading.Lock()
 
@@ -167,7 +171,8 @@ def create_ffmpeg_stream(
         bufsize=1,
     )
 
-    current_video_dict.clear()  
+    current_video_dict.clear()
+    current_video_dict["loop"] = bool(loop)
     if None not in [title, thumbnail]:
         current_video_dict["title"] = title
         current_video_dict["thumbnail"] = thumbnail
@@ -190,9 +195,11 @@ def create_ffmpeg_stream(
 
     # the below function returns 0 if the video ended on its own
     # 137, 1
-    exit_code = process.wait()
-    logging.info(f"Process {process.pid} exited with code {exit_code}")
     write_log_to_client(f"Process {process.pid} started for {video_type.value} video: {file_path}")
+    exit_code = process.wait()
+    write_log_to_client(f"Process {process.pid} exited with code {exit_code}")
+    logging.info(f"Process {process.pid} exited with code {exit_code}")
+  
 
     MetricsHandler.subprocess_count.labels(
         exit_code=exit_code,
@@ -498,11 +505,22 @@ async def log_event(request: Request):
 
 @app.get("/state")
 async def state():
-    result = {"state": State.INTERLUDE}
+    global last_state_snapshot
+
     if State.PLAYING in process_dict:
-        result = {"state": State.PLAYING, "nowPlaying": current_video_dict}
-    write_log_to_client("I HAVE A STATE " + str(result))
+        result = {"state": State.PLAYING.value, "nowPlaying": current_video_dict}
+    elif State.INTERLUDE in process_dict:
+        result = {"state": State.INTERLUDE.value}
+    else:
+        result = {"state": State.IDLE.value}
+
+    with state_lock:
+        if result != last_state_snapshot:
+            write_log_to_client(f"STATE_CHANGED={result}")
+            last_state_snapshot = result.copy()  
+
     return result
+
 
 
 @app.post("/play/file")
@@ -788,3 +806,4 @@ if __name__ == "__main__":
         port=args.port,
         reload=True,
     )
+
