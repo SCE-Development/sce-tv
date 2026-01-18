@@ -73,6 +73,13 @@
         let urlInput = document.getElementById("url");
         let rateLimiterCheckbox = document.getElementById("rate-limiter");
         let videoWillLoop = false;
+        window.addEventListener("load", () => {
+            fetch(stateURL.href)
+                .then(r => r.json())
+                .then(json => {
+                addLogMessage("INITIAL_STATE=" + JSON.stringify(json));
+                })
+            });
         let mouseDownTime = null;
 
         // hold click for repeat mode
@@ -102,9 +109,7 @@
         loopButton.addEventListener("click", toggleLoopVideo);
         urlInput.addEventListener("input", OnUrlChange);
 
-        console.log("SSE Test: Listening for messages...");
         const eventSource = new EventSource(new URL(window.location.pathname + "events", window.location.origin).href);
-        console.log("SSE Test: EventSource created");
         eventSource.onmessage = (event) => {
             const message = JSON.parse(event.data);
             addLogMessage(message.message);
@@ -182,21 +187,7 @@
             document.getElementById("metadata").style.visibility = "hidden";
             document.getElementById("playing").style.display = "none";
         }
-        fetch(stateURL.href).then((response) => response.json()).then((json) => {
-            const state = json["state"];
-            if (state === "playing") {
-                document.getElementById("urlInput").style.visibility = "visible";
-                document.getElementById("playing").style.visibility = "visible";
-                document.getElementById('title').innerHTML = json["nowPlaying"]["title"];
-                document.getElementById('thumbnail').src = json["nowPlaying"]["thumbnail"];
-                if (json["nowPlaying"]["thumbnail"] === "background.png") {
-                    document.getElementById('announcement-text').innerHTML = json["nowPlaying"]["title"].slice(18, -1);
-                }  else {
-                    document.getElementById('announcement-text').innerHTML = "";
-                }
-            }
-        })
-
+  
         // Add a function to navigate to the cache page when clicking on the h2 tag
         document.getElementById("cache_tag").addEventListener("click", function () {
             window.location.href = window.location.href + "cache";
@@ -243,25 +234,38 @@
         }
 
 
-        fetch(stateURL.href).then((response) => response.json()).then((json) => {
-            const state = json["state"];
-            console.log(json);
-            if (state === "interlude") {
+        fetch(stateURL.href)
+            .then(r => r.json())
+            .then(json => {
+
+                const state = json?.state;
+                if (state !== "playing") {
                 document.getElementById("metadata").style.visibility = "hidden";
                 document.getElementById("playing").style.display = "none";
-            }
-            else {
-                document.getElementById("metadata").style.visibility = "visible";
-                document.getElementById("playing").style.display = "block";
-                document.getElementById('title').innerHTML = json["nowPlaying"]["title"];
-                document.getElementById('thumbnail').src = json["nowPlaying"]["thumbnail"]
-                if (json["nowPlaying"]["thumbnail"] === "background.png") {
-                    document.getElementById('announcement-text').innerHTML = json["nowPlaying"]["title"].slice(18, -1);
-                } else {
-                    document.getElementById('announcement-text').innerHTML = "";
+                return;
                 }
-            }
-        })
+
+                const np = json?.nowPlaying;
+                if (!np) {
+                console.warn("Missing nowPlaying in state payload:", json);
+                document.getElementById("metadata").style.visibility = "hidden";
+                document.getElementById("playing").style.display = "block"; 
+                return;
+                }
+
+                document.getElementById("playing").style.display = "block";
+                document.getElementById("metadata").style.visibility = "visible";
+                document.getElementById("title").textContent = np.title ?? "";
+                document.getElementById("thumbnail").src = np.thumbnail ?? "";
+
+                const ann = document.getElementById("announcement-text");
+                if ((np.thumbnail ?? "") === "background.png") {
+                  ann.textContent = (np.title ?? "").slice(18, -1);
+                 } else {
+                   ann.textContent = "";
+                 }
+            })
+            .catch(err => console.error("state fetch failed:", err));
 
         // Toggle Show Logs button text and show/hide logs box
         document.getElementById("show-logs-btn").addEventListener("click", function () {
@@ -286,6 +290,12 @@
             // Scroll to bottom
             logsContent.scrollTop = logsContent.scrollHeight;
         }
+        setInterval(() => {
+  fetch(stateURL.href)
+    .then(r => r.json())
+    .then(json => {
+    });
+}, 2000);
 
         // Adds a function to open the debug page in a new window when the debug button is clicked
         document.getElementById("debug-btn").addEventListener("click", function () {
