@@ -39,17 +39,23 @@
                 <button type="button" id="loop" style="background-color: blue;">Loop Video?</button>
                 <button type="button" id="play" style="background-color: green;">Play</button>
             </div>
+            <div id="cacheStatus" style="display: none; color: white; font-weight: bold; padding-top: 10px;">
+                Nice, the video is already cached!
+            </div>
         </div>
         <input type="checkbox" id="rate-limiter" style="visibility: hidden;">
         <div id="playing">
             <div class="card">
                 <div id="metadata">
                     <div style="display: flex; align-items: center; justify-content: center;">
-                        <h2>NOW PLAYING: </h2>
+                        <h2 style="white-space: pre-wrap;">NOW PLAYING: </h2>
                         <h2 id="title"></h2>
                     </div>
                     <button type="button" id="stop" style="background-color:red;" onclick="Stop(event)">Stop</button>
-                    <img id="thumbnail" style="border-style: solid;border-width: 3px;border-radius: 25px;" width="640">
+                    <div id="thumbnail-container" style="position: relative; display: inline-block;">
+                        <img id="thumbnail" style="border-style: solid;border-width: 3px;border-radius: 25px;" width="640">
+                        <div id="announcement-text"></div>
+                    </div>
                 </div>
 
             </div>
@@ -144,6 +150,15 @@
                 document.getElementById("playing").style.display = "block";
                 //Manually upate the stop button, or else it won't update unless page is reloaded
                 document.getElementById("playing").style.visibility="visible";
+
+                // Display message if video is already in cache
+                if (!!res_json.in_cache) {
+                    document.getElementById("cacheStatus").style.display="inline";
+                    setTimeout(() => {
+                        document.getElementById("cacheStatus").style.display="none";
+                    }, 3000);
+                }
+
                 setTimeout(() => {
                     if (playButton.hasAttribute('repeat')) {
                         playButton.textContent = "Play on Repeat";
@@ -169,7 +184,7 @@
             document.getElementById("metadata").style.visibility = "hidden";
             document.getElementById("playing").style.display = "none";
         }
-
+  
         // Add a function to navigate to the cache page when clicking on the h2 tag
         document.getElementById("cache_tag").addEventListener("click", function () {
             window.location.href = window.location.href + "cache";
@@ -201,6 +216,11 @@
                     document.getElementById("metadata").style.visibility = "visible";
                     document.getElementById('title').innerHTML = data["title"];
                     document.getElementById('thumbnail').src = data["thumbnail"];
+                    if (data["thumbnail"] === "background.png") {
+                        document.getElementById('announcement-text').innerHTML = data["title"].slice(18, -1);
+                    } else {
+                        document.getElementById('announcement-text').innerHTML = "";
+                    }
                     rateLimiterCheckbox.checked = true;
                 })
                 .catch(err => {
@@ -234,10 +254,15 @@
                 document.getElementById("metadata").style.visibility = "visible";
                 document.getElementById("title").textContent = np.title ?? "";
                 document.getElementById("thumbnail").src = np.thumbnail ?? "";
+
+                const ann = document.getElementById("announcement-text");
+                if ((np.thumbnail ?? "") === "background.png") {
+                  ann.textContent = (np.title ?? "").slice(18, -1);
+                 } else {
+                   ann.textContent = "";
+                 }
             })
             .catch(err => console.error("state fetch failed:", err));
-
-
 
         // Toggle Show Logs button text and show/hide logs box
         document.getElementById("show-logs-btn").addEventListener("click", function () {

@@ -82,6 +82,13 @@ input {
     margin-left: 10px;
 }
 
+#announcement-text {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 36px;
+}
+
 .card {
     background: hsla(0, 0%, 31%, 0.7);
     border-radius: 12px;
