@@ -65,6 +65,8 @@ class VideoConfig:
     thumbnail: str = None
     play_interlude_after: bool = True
     repeat: bool = False
+    requested_height: int = None
+    actual_size: dict = None
 
 
 # Create FastAPI instance
@@ -112,6 +114,16 @@ async def http_request_count(request: Request, call_next):
     MetricsHandler.http_request_count.labels(endpoint=request.url.path).inc()
     return await call_next(request)
 
+# Compute output size while preserving aspect ratio
+def _compute_scaled_size(in_w: int, in_h: int, target_h: int):
+    if not in_w or not in_h or not target_h:
+        return None
+    out_h = int(target_h)
+    out_w = int(round(in_w * (out_h / in_h)))
+    # force even width for libx264
+    if out_w % 2 != 0:
+        out_w += 1
+    return out_w, out_h
 
 # return the result of process.wait()
 def create_ffmpeg_stream(
@@ -122,7 +134,9 @@ def create_ffmpeg_stream(
     thumbnail=None,
     play_interlude_after=True,
     announcement=False,
-    duration=5
+    duration=5,
+    requested_height: int | None = None,
+    actual_size: dict | None = None
 ):
     if file_path is None:
         logging.info("file_path is None. ffmpeg_stream cancelled.")
@@ -138,7 +152,7 @@ def create_ffmpeg_stream(
         "-i",
         file_path,
         "-vf",
-        f"scale=640:360",
+        f"scale=-2:{requested_height}" if requested_height else "scale=640:360",
         "-c:v",
         "libx264",
         "-preset",
@@ -171,7 +185,15 @@ def create_ffmpeg_stream(
         bufsize=1,
     )
 
-    current_video_dict.clear()
+    current_video_dict.clear()  
+    
+    if requested_height:
+        current_video_dict["requested_height"] = int(requested_height)
+    else:
+        current_video_dict["requested_height"] = None
+
+    current_video_dict["actual_resolution"] = actual_size
+    
     current_video_dict["loop"] = bool(loop)
     if None not in [title, thumbnail]:
         current_video_dict["title"] = title
@@ -353,6 +375,8 @@ def play_video(video_path: str, config: VideoConfig):
             config.title,
             config.thumbnail,
             play_interlude_after=config.play_interlude_after,
+            requested_height=config.requested_height, 
+            actual_size=config.actual_size,
         )
         return exit_code
     except Exception as e:
@@ -552,7 +576,7 @@ async def play_file(file_path: str = "cache", title: str = None, thumbnail: str 
 
 
 @app.post("/play")
-async def play(url: str, loop: bool = False, repeat: bool = False):
+async def play(url: str, loop: bool = False, repeat: bool = False, resolution: int = 360):
     # Stop all videos when pressing play, this also breaks out of video loops
     stop_all_videos()
     cancel_event.clear()
@@ -574,6 +598,25 @@ async def play(url: str, loop: bool = False, repeat: bool = False):
         raise HTTPException(status_code=400, detail="Unknown URL")
     elif url_type == UrlType.EMPTY:
         return Response(status_code=204)
+    video = YouTube(url)
+    # get aspect ratio from best available video-only stream
+    in_w = None
+    in_h = None
+    try:
+        # choose the highest resolution video stream
+        best = video.streams.filter(only_video=True).order_by("resolution").desc().first()
+        if best and best.resolution and best.resolution.endswith("p"):
+            in_h = int(best.resolution[:-1])
+            # fall back to 16:9 if unknown
+            in_w = int(round(in_h * (16 / 9)))
+    except Exception:
+        pass
+
+    actual_size = None
+    if in_w and in_h and resolution:
+        out = _compute_scaled_size(in_w, in_h, int(resolution))
+        if out:
+            actual_size = {"width": out[0], "height": out[1]}
 
     # Config for generic url type (VIDEO, PLAYLIST)
     config = VideoConfig(
@@ -582,6 +625,8 @@ async def play(url: str, loop: bool = False, repeat: bool = False):
         loop=loop,
         play_interlude_after=True,
         repeat=repeat,
+        requested_height=int(resolution),
+        actual_size=actual_size,
     )
 
     # Build the playlist before download for accurate cache checking
