@@ -598,7 +598,11 @@ async def play(url: str, loop: bool = False, repeat: bool = False, resolution: i
         raise HTTPException(status_code=400, detail="Unknown URL")
     elif url_type == UrlType.EMPTY:
         return Response(status_code=204)
-    video = YouTube(url)
+    try: 
+        video = YouTube(url)
+    except Exception as e:
+        write_log_to_client(f"Failed to load YouTube video: {e}")
+        return {"detail": "Failed"}
     # get aspect ratio from best available video-only stream
     in_w = None
     in_h = None
@@ -633,13 +637,29 @@ async def play(url: str, loop: bool = False, repeat: bool = False, resolution: i
     if url_type == UrlType.PLAYLIST:
         try:
             playlist_for_cache_check = Playlist(config.url)
-        except:
+
+            write_log_to_client(
+                f"Playlist detected with {len(playlist_for_cache_check)} videos"
+            )
+        except Exception as e:
+            write_log_to_client(
+                f"Error building playlist cache check: {e}"
+            )
+
             playlist_for_cache_check = None
 
     # Submit video config to pipeline
     try:
         # Add URL's video config to queue
         download_url_types(config)
+
+        write_log_to_client("Playlist queued successfully")
+    
+    except Exception as e:
+        write_log_to_client(
+            f"Failed to queue playlist: {e}"
+        )
+        raise
 
         # Update Metrics
         MetricsHandler.video_count.inc()
