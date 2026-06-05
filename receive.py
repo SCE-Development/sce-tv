@@ -44,7 +44,7 @@ def switch_stream(instance, player, url):
     player.set_media(media)
     player.play()
 
-def stream_switcher(instance, player, sce_tv_url, weather_url):
+def work(instance, player, sce_tv_url, weather_url):
 
     # Swap the active stream depending on playing state
     # idle: weather channel, playing: sce-tv
@@ -88,7 +88,7 @@ if __name__ == "__main__":
     # Only enable idle-based switching when a weather channel URL is provided
     if args.weather_rtmp_url:
         switcher_thread = threading.Thread(
-            target=stream_switcher,
+            target=work,
             args=(instance, player, args.sce_tv_rtmp_url, args.weather_rtmp_url),
             daemon=True,
         )
