@@ -1,64 +1,66 @@
 import argparse
 import json
+import queue
 import threading
 import time
 import urllib.request
 from urllib.parse import urlparse
 import vlc
 
-# Set when the sce-tv server reports "idle", cleared when it is "playing"
-idle_event = threading.Event()
+receive_weather = threading.Event()
+receive_sce_tv = threading.Event()
 
-def get_stream_state(ip, port=5001, interval=5):
+commands = queue.Queue()
 
-    # Continuously ask the sce-tv server at the given IP for the current state, "idle" or "playing"
+def get_stream_state(ip, port=5001, timeout=5):
+
+    # Ask the sce-tv server at the given IP for the current state, "idle" or "playing"
     url = f"http://{ip}:{port}/state"
-    while True:
-        try:
-            with urllib.request.urlopen(url, timeout=5) as response:
-                data = json.loads(response.read())
-            state = "playing" if data.get("state") == "playing" else "idle"
-            print(f"sce-tv state: {state}")
-            if state == "idle":
-                idle_event.set()
-            else:
-                idle_event.clear()
-        except Exception as e:
-            print(f"Could not reach sce-tv server at {url}: {e}")
-        time.sleep(interval)
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as response:
+            data = json.loads(response.read())
+        return "playing" if data.get("state") == "playing" else "idle"
+    except Exception as e:
+        print(f"Could not reach sce-tv server at {url}: {e}")
+        return None
 
-def play_stream(url):
-    instance = vlc.Instance()
-    player = instance.media_player_new()
+def receive_stream(instance, player, urls):
 
-    switch_stream(instance, player, url)
+    media = instance.media_new(urls[receive_sce_tv])
+    player.set_media(media)
+    player.play()
     print("Starting playback...")
 
     # Buffer
     time.sleep(5)
 
-    return instance, player
-
-def switch_stream(instance, player, url):
-    media = instance.media_new(url)
-    player.set_media(media)
-    player.play()
-
-def work(instance, player, sce_tv_url, weather_url):
-
-    # Swap the active stream depending on playing state
-    # idle: weather channel, playing: sce-tv
+    # Consume state commands and switch the active stream to match
     while True:
-        # Block until the server reports idle, then switch to weather
-        idle_event.wait()
-        print("sce-tv idle, switching to the weather channel...")
-        switch_stream(instance, player, weather_url)
+        command = commands.get()
+        url = urls[command]
+        print(f"switching stream to {url}...")
+        media = instance.media_new(url)
+        player.set_media(media)
+        player.play()
 
-        # Block until the server is playing, then switch to sce-tv
-        while idle_event.is_set():
-            time.sleep(1)
-        print("sce-tv playing, switching back to sce-tv...")
-        switch_stream(instance, player, sce_tv_url)
+def signal(ip, weather_url, interval=5):
+
+    # Defaults to sce-tv, only switches to weather when server is idle and weather url is provided, pushes command when the state changes
+    while True:
+        state = get_stream_state(ip)
+
+        if weather_url and state == "idle":
+            target = receive_weather
+        else:
+            target = receive_sce_tv
+
+        if not target.is_set():
+            receive_weather.clear()
+            receive_sce_tv.clear()
+            target.set()
+            commands.put(target)
+
+        time.sleep(interval)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -76,23 +78,29 @@ if __name__ == "__main__":
     # State API runs on the same host as the RTMP server, so derive it from the stream URL rather than passing the host separately
     sce_tv_ip = urlparse(args.sce_tv_rtmp_url).hostname
 
-    state_thread = threading.Thread(
-        target=get_stream_state,
-        args=(sce_tv_ip,),
+    urls = {
+        receive_sce_tv: args.sce_tv_rtmp_url,
+        receive_weather: args.weather_rtmp_url,
+    }
+
+    receive_sce_tv.set()
+
+    instance = vlc.Instance()
+    player = instance.media_player_new()
+
+    receive_stream_thread = threading.Thread(
+        target=receive_stream,
+        args=(instance, player, urls),
         daemon=True,
     )
-    state_thread.start()
+    receive_stream_thread.start()
 
-    instance, player = play_stream(args.sce_tv_rtmp_url)
-
-    # Only enable idle-based switching when a weather channel URL is provided
-    if args.weather_rtmp_url:
-        switcher_thread = threading.Thread(
-            target=work,
-            args=(instance, player, args.sce_tv_rtmp_url, args.weather_rtmp_url),
-            daemon=True,
-        )
-        switcher_thread.start()
+    signal_thread = threading.Thread(
+        target=signal,
+        args=(sce_tv_ip, args.weather_rtmp_url),
+        daemon=True,
+    )
+    signal_thread.start()
 
     while True:
         time.sleep(1)
