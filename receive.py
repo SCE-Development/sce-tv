@@ -64,6 +64,13 @@ def signal(ip, weather_url, interval=5):
         time.sleep(interval)
 
 if __name__ == "__main__":
+    logging.Formatter.converter = time.gmtime
+
+    logging.basicConfig(
+        format="%(asctime)s.%(msecs)03dZ %(levelname)s:%(name)s:%(message)s",
+        datefmt="%Y-%m-%dT%H:%M:%S",
+        level=logging.ERROR
+    )
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--sce-tv-rtmp-url",
