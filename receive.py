@@ -1,5 +1,6 @@
 import argparse
 import json
+import logging
 import queue
 import threading
 import time
@@ -20,8 +21,8 @@ def get_stream_state(ip, port=5001, timeout=5):
         with urllib.request.urlopen(url, timeout=timeout) as response:
             data = json.loads(response.read())
         return "playing" if data.get("state") == "playing" else "idle"
-    except Exception as e:
-        print(f"Could not reach sce-tv server at {url}: {e}")
+    except Exception:
+        logging.exception("Could not reach sce-tv server at %s", url)
         return None
 
 def receive_stream(instance, player, urls):
