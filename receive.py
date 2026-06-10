@@ -30,7 +30,7 @@ def receive_stream(instance, player, urls):
     media = instance.media_new(urls[receive_sce_tv])
     player.set_media(media)
     player.play()
-    print("Starting playback...")
+    logging.info("Starting playback...")
 
     # Buffer
     time.sleep(5)
@@ -39,7 +39,7 @@ def receive_stream(instance, player, urls):
     while True:
         command = commands.get()
         url = urls[command]
-        print(f"switching stream to {url}...")
+        logging.info("switching stream to %s...", url)
         media = instance.media_new(url)
         player.set_media(media)
         player.play()
