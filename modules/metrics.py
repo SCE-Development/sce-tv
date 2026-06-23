@@ -80,6 +80,24 @@ class Metrics(enum.Enum):
         ["video_type"],
     )
 
+    DOWNLOAD_MONITOR_SUCCESS = (
+        "download_monitor_success",
+        "1 if the monitoring download succeeded, 0 if it failed",
+        prometheus_client.Gauge,
+    )
+
+    DOWNLOAD_MONITOR_DURATION_SECONDS = (
+        "download_monitor_duration_seconds",
+        "Time spent performing the monitoring download",
+        prometheus_client.Gauge,
+    )
+
+    DOWNLOAD_MONITOR_FAILURES_TOTAL = (
+        "download_monitor_failures_total",
+        "Total failed monitoring downloads",
+        prometheus_client.Counter,
+    )
+
     def __init__(self, title, description, prometheus_type, labels=()):
         # we use the above default value for labels because it matches what's used
         # in the prometheus_client library's metrics constructor, see
