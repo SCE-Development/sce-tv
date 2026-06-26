@@ -617,6 +617,8 @@ async def play(url: str, loop: bool = False, repeat: bool = False, resolution: i
             # choose the highest resolution video stream
             best = video.streams.filter(only_video=True).order_by("resolution").desc().first()
             if best and best.resolution and best.resolution.endswith("p"):
+                # best.resolution is a str ending in "p" e.g. '2160p' (or
+                # '1080p', '720p', etc.) basically the height in pixels plus a "p"
                 in_h = int(best.resolution[:-1])
                 # fall back to 16:9 if unknown
                 in_w = int(round(in_h * (16 / 9)))
