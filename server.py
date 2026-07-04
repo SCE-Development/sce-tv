@@ -29,7 +29,7 @@ import psutil
 from modules.args import get_args
 from modules.cache import Cache
 from modules.metrics import MetricsHandler
-from modules.download_monitor import monitor_download
+from modules.download_monitor import start_download_monitor
 
 
 logging.Formatter.converter = time.gmtime
@@ -799,18 +799,13 @@ def startup():
     threading.Thread(target=download_video_worker, daemon=True).start()
     threading.Thread(target=play_video_worker, daemon=True).start()
 
-    # Condition that starts the download loop
     if args.download_monitoring_interval > 0:
-        threading.Thread(
-            target=monitor_download,
-            args=(args.download_monitoring_interval, args.videopath),
-            daemon=True,
-        ).start()
+        start_download_monitor(args.download_monitoring_interval)
 
         logging.info(
             f"Started download monitoring every {args.download_monitoring_interval} seconds"
         )
-
+        
 @app.get("/announcement")
 async def announcement():
     return FileResponse("static/announcement.html")

@@ -1,38 +1,56 @@
 import logging
-import os
-import shutil
-import tempfile
+import threading
 import time
 
-from modules.cache import Cache
+from pytubefix import YouTube
 from modules.metrics import MetricsHandler
 
 
 TEST_VIDEO_URL = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 
 
-def monitor_download(interval: int, download_path: str):
-    while True:
-        start = time.time()
-        temp_dir = tempfile.mkdtemp(dir=download_path)
+def monitor_download():
+    start = time.time()
 
-        try:
-            cache = Cache(file_path=temp_dir)
-            cache.add(TEST_VIDEO_URL)
+    try:
+        video = YouTube(TEST_VIDEO_URL)
 
-            duration = time.time() - start
-            MetricsHandler.download_monitor_success.set(1)
-            MetricsHandler.download_monitor_duration_seconds.set(duration)
+        stream = (
+            video.streams.filter(
+                resolution="360p",
+                progressive=True,
+            )
+            .order_by("resolution")
+            .desc()
+            .first()
+        )
 
-            logging.info("Download monitoring succeeded")
+        if stream is None:
+            raise Exception("No suitable stream found")
 
-        except Exception as e:
-            MetricsHandler.download_monitor_success.set(0)
-            MetricsHandler.download_monitor_failures_total.inc()
-            logging.exception(f"Download monitoring failed: {e}")
+        stream.download(
+            output_path="/dev",
+            filename="null",
+        )
 
-        finally:
-            shutil.rmtree(temp_dir, ignore_errors=True)
+        duration = time.time() - start
 
-        time.sleep(interval)
+        MetricsHandler.download_monitor_success.set(1)
+        MetricsHandler.download_monitor_duration_seconds.set(duration)
 
+        logging.info(f"Download monitoring succeeded in {duration:.2f} seconds")
+
+    except Exception as e:
+        MetricsHandler.download_monitor_success.set(0)
+        MetricsHandler.download_monitor_failures_total.inc()
+        logging.exception(f"Download monitoring failed: {e}")
+
+
+def start_download_monitor(interval: int):
+    def monitor_loop():
+        while True:
+            monitor_download()
+            time.sleep(interval)
+
+    thread = threading.Thread(target=monitor_loop, daemon=True)
+    thread.start()
