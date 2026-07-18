@@ -42,6 +42,19 @@ class Metrics(enum.Enum):
         prometheus_client.Counter,
     )
 
+    DOWNLOAD_SPEED = (
+        "download_speed",
+        "Speed of YouTube video download in bytes/second",
+        prometheus_client.Gauge
+    )
+
+    DOWNLOAD_SUCCESS = (
+        "download_success",
+        "Success of YouTube video download (1=success, 0=fail)",
+        prometheus_client.Gauge,
+        ["reason"]
+    )
+
     CACHE_SIZE = (
         "cache_size",
         "Total entries in cache",
