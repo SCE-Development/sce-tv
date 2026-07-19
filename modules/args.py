@@ -34,7 +34,7 @@ def get_args():
     parser.add_argument(
         "--download-monitoring-interval",
         type=int,
-        default=600,
+        default=0,
         help="run download monitoring loop every interval, interval=0 to disable monitoring"
     )
     return parser.parse_args()
