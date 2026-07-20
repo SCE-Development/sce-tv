@@ -3,13 +3,14 @@ import threading
 import time
 
 from pytubefix import YouTube
+
 from modules.metrics import MetricsHandler
 
 
 TEST_VIDEO_URL = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 
 
-def monitor_download():
+def monitor_download() -> None:
     start = time.time()
 
     try:
@@ -26,7 +27,12 @@ def monitor_download():
         )
 
         if stream is None:
-            raise Exception("No suitable stream found")
+            raise RuntimeError("No suitable stream found")
+
+        bytes_downloaded = stream.filesize
+
+        if bytes_downloaded is None:
+            raise RuntimeError("Unable to determine stream file size")
 
         stream.download(
             output_path="/dev",
@@ -35,22 +41,42 @@ def monitor_download():
 
         duration = time.time() - start
 
+        if duration <= 0:
+            raise RuntimeError("Download duration must be greater than zero")
+
+        bitrate = bytes_downloaded / duration
+
         MetricsHandler.download_monitor_success.set(1)
         MetricsHandler.download_monitor_duration_seconds.set(duration)
+        MetricsHandler.download_bitrate_latest_bytes_per_second.set(bitrate)
+        MetricsHandler.download_bitrate_bytes_per_second.observe(bitrate)
 
-        logging.info(f"Download monitoring succeeded in {duration:.2f} seconds")
+        logging.info(
+            "Download monitoring succeeded in %.2f seconds "
+            "with bitrate %.2f bytes/sec",
+            duration,
+            bitrate,
+        )
 
-    except Exception as e:
+    except Exception as error:
+        duration = time.time() - start
+
         MetricsHandler.download_monitor_success.set(0)
+        MetricsHandler.download_monitor_duration_seconds.set(duration)
         MetricsHandler.download_monitor_failures_total.inc()
-        logging.exception(f"Download monitoring failed: {e}")
+
+        logging.exception("Download monitoring failed: %s", error)
 
 
-def start_download_monitor(interval: int):
-    def monitor_loop():
+def start_download_monitor(interval: int) -> None:
+    def monitor_loop() -> None:
         while True:
             monitor_download()
             time.sleep(interval)
 
-    thread = threading.Thread(target=monitor_loop, daemon=True)
+    thread = threading.Thread(
+        target=monitor_loop,
+        daemon=True,
+        name="download-monitor",
+    )
     thread.start()
