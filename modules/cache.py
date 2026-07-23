@@ -1,5 +1,6 @@
 from collections import OrderedDict
 from dataclasses import dataclass
+from datetime import datetime, timezone
 import logging
 import os
 import uuid
@@ -17,6 +18,7 @@ class VideoInfo:
     thumbnail: str
     title: str
     size_bytes: int
+    date_added: str
 
     def __str__(self):
         return f"VideoInfo(video_id={self.video_id}, file_path={self.file_path}, size_bytes={self.size_bytes})"
@@ -70,6 +72,7 @@ class Cache:
             thumbnail=YouTube(url).thumbnail_url,
             title=YouTube(url).title,
             size_bytes=video.filesize,
+            date_added=datetime.now(timezone.utc).isoformat(),
         )
         self.video_id_to_path[video_id] = video_info
         self.current_size_bytes += video_info.size_bytes
@@ -124,6 +127,7 @@ class Cache:
                     thumbnail=video_info["thumbnail"],
                     title=video_info["title"],
                     size_bytes=video_info["size_bytes"],
+                    date_added=video_info.get("date_added", ""),
                 )
                 self.current_size_bytes += video_info["size_bytes"]
                 MetricsHandler.cache_size.set(len(self.video_id_to_path))
@@ -144,6 +148,7 @@ class Cache:
                     "thumbnail": video_info.thumbnail,
                     "title": video_info.title,
                     "size_bytes": video_info.size_bytes,
+                    "date_added": video_info.date_added,
                 }
 
             # serializing json

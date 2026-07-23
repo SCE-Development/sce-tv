@@ -171,6 +171,7 @@
                 const playButton = document.createElement('button');
                 const deleteButton = document.createElement('button');
                 const videoSize = document.createElement('span');
+                const videoDateAdded = document.createElement('span');
                 const playEntireDirectoryBtn = document.getElementById('playEntireDirectoryBtn');
 
                 videoContainer.id = "videoContainer";
@@ -180,6 +181,7 @@
                 playButton.className = "playButton";
                 deleteButton.className = "deleteButton";
                 videoSize.className = "videoSize";
+                videoDateAdded.className = "videoDateAdded";
 
                 videoTitle.textContent = element.name;
                 videoImg.src = element.thumbnail;
@@ -187,6 +189,9 @@
                 playButton.textContent = 'play';
                 deleteButton.textContent = 'delete';
                 videoSize.textContent = formatBytes(element.size_bytes);
+                videoDateAdded.textContent = element.date_added
+                  ? "Added " + new Date(element.date_added).toLocaleString()
+                  : "Added: unknown";
                 
                 if (element.path === currentVideoPath) {
                   deleteButton.disabled = true;
@@ -207,6 +212,7 @@
                 videoContainer.appendChild(videoImgContainer);
                 videoContainer.appendChild(videoTitleContainer);
                 videoContainer.appendChild(videoSize);
+                videoContainer.appendChild(videoDateAdded);
                 videoContainer.appendChild(playButton);
                 videoContainer.appendChild(deleteButton);
                 listOfVideosContainer.appendChild(videoContainer);
