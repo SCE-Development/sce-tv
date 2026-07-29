@@ -765,6 +765,7 @@ async def getVideos():
                 "path": value.file_path,
                 "thumbnail": value.thumbnail,
                 "size_bytes": file_size,
+                "date_added": value.date_added,
             }
         )
     return json.dumps(returnedResponse)

@@ -170,16 +170,22 @@
                 const videoTitle = document.createElement('p');
                 const playButton = document.createElement('button');
                 const deleteButton = document.createElement('button');
+                const videoMetaContainer = document.createElement('div');
+                const videoDateContainer = document.createElement('div');
                 const videoSize = document.createElement('span');
+                const videoDateAdded = document.createElement('span');
                 const playEntireDirectoryBtn = document.getElementById('playEntireDirectoryBtn');
 
                 videoContainer.id = "videoContainer";
                 videoImgContainer.id = "videoImgContainer";
                 videoTitleContainer.id = "videoTitleContainer";
+                videoMetaContainer.id = "videoMetaContainer";
+                videoDateContainer.id = "videoDateContainer";
                 playButton.id = element.id;
                 playButton.className = "playButton";
                 deleteButton.className = "deleteButton";
                 videoSize.className = "videoSize";
+                videoDateAdded.className = "videoDateAdded";
 
                 videoTitle.textContent = element.name;
                 videoImg.src = element.thumbnail;
@@ -187,6 +193,9 @@
                 playButton.textContent = 'play';
                 deleteButton.textContent = 'delete';
                 videoSize.textContent = formatBytes(element.size_bytes);
+                videoDateAdded.textContent = element.date_added
+                  ? "Added " + new Date(element.date_added).toLocaleString()
+                  : "Added: unknown";
                 
                 if (element.path === currentVideoPath) {
                   deleteButton.disabled = true;
@@ -204,9 +213,12 @@
 
                 videoImgContainer.appendChild(videoImg);
                 videoTitleContainer.appendChild(videoTitle);
+                videoMetaContainer.appendChild(videoSize);
+                videoDateContainer.appendChild(videoDateAdded);
                 videoContainer.appendChild(videoImgContainer);
                 videoContainer.appendChild(videoTitleContainer);
-                videoContainer.appendChild(videoSize);
+                videoContainer.appendChild(videoMetaContainer);
+                videoContainer.appendChild(videoDateContainer);
                 videoContainer.appendChild(playButton);
                 videoContainer.appendChild(deleteButton);
                 listOfVideosContainer.appendChild(videoContainer);
