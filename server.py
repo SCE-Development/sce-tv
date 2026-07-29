@@ -601,23 +601,32 @@ async def play(url: str, loop: bool = False, repeat: bool = False, resolution: i
         raise HTTPException(status_code=400, detail="Unknown URL")
     elif url_type == UrlType.EMPTY:
         return Response(status_code=204)
-    try: 
-        video = YouTube(url)
-    except Exception as e:
-        write_log_to_client(f"Failed to load YouTube video: {e}")
-        return {"detail": "Failed"}
     # get aspect ratio from best available video-only stream
     in_w = None
     in_h = None
-    try:
-        # choose the highest resolution video stream
-        best = video.streams.filter(only_video=True).order_by("resolution").desc().first()
-        if best and best.resolution and best.resolution.endswith("p"):
-            in_h = int(best.resolution[:-1])
-            # fall back to 16:9 if unknown
-            in_w = int(round(in_h * (16 / 9)))
-    except Exception:
-        pass
+    title = None
+    thumbnail = None
+    # Only single videos resolve to a YouTube object here; playlists are
+    # expanded into individual videos later in the pipeline.
+    if url_type == UrlType.VIDEO:
+        try:
+            video = YouTube(url)
+            title = video.title
+            thumbnail = video.thumbnail_url
+        except Exception as e:
+            write_log_to_client(f"Failed to load YouTube video: {e}")
+            return {"detail": "Failed"}
+        try:
+            # choose the highest resolution video stream
+            best = video.streams.filter(only_video=True).order_by("resolution").desc().first()
+            if best and best.resolution and best.resolution.endswith("p"):
+                # best.resolution is a str ending in "p" e.g. '2160p' (or
+                # '1080p', '720p', etc.) basically the height in pixels plus a "p"
+                in_h = int(best.resolution[:-1])
+                # fall back to 16:9 if unknown
+                in_w = int(round(in_h * (16 / 9)))
+        except Exception:
+            pass
 
     actual_size = None
     if in_w and in_h and resolution:
@@ -630,6 +639,8 @@ async def play(url: str, loop: bool = False, repeat: bool = False, resolution: i
         url_type=url_type,
         url=url,
         loop=loop,
+        title=title,
+        thumbnail=thumbnail,
         play_interlude_after=True,
         repeat=repeat,
         requested_height=int(resolution),
