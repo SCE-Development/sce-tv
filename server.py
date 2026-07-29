@@ -308,8 +308,9 @@ def download_video_worker():
                 continue
             video_path = download_video(config)
             play_video_queue.put((config, video_path))
-        except Exception:
+        except Exception as e:
             logging.exception(f"download_video_worker failed on {config.url}")
+            write_log_to_client(f"Failed to download {config.url}: {e}")
         finally:
             download_url_queue.task_done()
 
