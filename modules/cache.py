@@ -102,6 +102,8 @@ class Cache:
         self.write_cache()
         self.current_size_bytes -= removed_video_info.size_bytes
         os.remove(removed_video_info.file_path)
+        MetricsHandler.cache_size.set(len(self.video_id_to_path))
+        MetricsHandler.cache_size_bytes.set(self.current_size_bytes)
 
     def clear(self):
         self._downsize_cache_to_target_bytes(0)
