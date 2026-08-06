@@ -112,8 +112,7 @@ if __name__ == '__main__':
             while not stream_is_dead(media):
                 stream_running.set(1)
                 sleep(1)
-            media.stop()
-            stream_running.set(0)
+                
         except Exception as e:
             print("we crashed", e)
         
