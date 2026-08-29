@@ -18,7 +18,7 @@ from queue import Queue, Empty
 ssl._create_default_https_context = ssl._create_stdlib_context
 
 from fastapi import FastAPI, HTTPException, Response, Request
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pytubefix import YouTube, Playlist
@@ -583,7 +583,7 @@ async def play_file(
                             )
                             # If the video ended on its own (return non-zero), break out
                             if response != 0:
-                                break
+                                return
 
                             # there's some sort of delay on node media server
                             # if you immediately play the next file sometimes it
@@ -854,7 +854,12 @@ def get_metrics():
 
 
 @app.get("/view")
-def get_cache():
+def get_cache(path: str = None):
+    # If no path parameter is present, redirect to default ?path=cache
+    if path == args.videopath:
+        return RedirectResponse(url="/view", status_code=303)
+    
+    # Otherwise, serve the HTML page
     return FileResponse("static/cache.html")
 
 
