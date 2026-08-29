@@ -549,20 +549,14 @@ async def state():
     return result
 
 
-<<<<<<< HEAD
 @app.post("/file/play/")
 async def play_file(file_path: str = None, title: str = None, thumbnail: str = None):
-=======
-@app.post("/play/file")
-async def play_file(file_path: str = "cache", title: str = None, thumbnail: str = None, loop: bool = False):
->>>>>>> aca99f7 (Added looping feature to cache videos)
     try:
         # Check if playing cache or a disk directory/file
         if file_path == "cache":
             threading.Thread(target=handle_cache_play).start()
             return {"detail": "Success"}
 
-<<<<<<< HEAD
         if file_path is None:
             file_path = args.videopath
         if os.path.isdir(file_path):
@@ -606,19 +600,6 @@ async def play_file(file_path: str = "cache", title: str = None, thumbnail: str 
                     thumbnail,
                 ),
             ).start()
-=======
-        # Start a thread to play a single video in the cache
-        threading.Thread(
-            target=create_ffmpeg_stream,
-            args=(
-                file_path,
-                State.PLAYING,
-                loop,
-                title,
-                thumbnail,
-            ),
-        ).start()
->>>>>>> aca99f7 (Added looping feature to cache videos)
 
         return {"detail": "Success"}
 
@@ -963,4 +944,3 @@ if __name__ == "__main__":
         port=args.port,
         reload=True,
     )
-
