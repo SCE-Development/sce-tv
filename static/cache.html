@@ -11,6 +11,7 @@
   <button id="viewFilesOnDiskBtn">View files on disk</button>
   <h1>SCE TV Cache</h1>
   <button id="playEntireDirectoryBtn">Play entire directory</button>
+  <button id="viewParentDirBtn" style="display: none;">View parent directory</button>
   <!-- Video -->
   <div id="listOfVideosContainer">
   </div>
@@ -149,9 +150,28 @@
 
   <script>
     const urlParams = new URLSearchParams(window.location.search);
-    let path = urlParams.get('path');
+    let path = urlParams.get('path') || '';
 
     const diskBtn = document.getElementById('viewFilesOnDiskBtn');
+
+    const parentBtn = document.getElementById('viewParentDirBtn');
+
+    // Count slashes in the path string
+    const slashCount = (path.match(/\//g) || []).length;
+
+    // Show button if it has more than 1 slash
+    if (slashCount > 1) {
+        parentBtn.style.display = 'inline-block'; // or 'block' depending on your styling
+
+        parentBtn.addEventListener('click', () => {
+            // Find the last slash to go up one directory level
+            const lastSlashIndex = path.lastIndexOf('/');
+            if (lastSlashIndex !== -1) {
+                const parentPath = path.substring(0, lastSlashIndex);
+                window.location.href = window.location.pathname + "?path=" + encodeURIComponent(parentPath);
+            }
+        });
+    }
 
     if (path === 'cache') {
         diskBtn.textContent = "View files on disk";

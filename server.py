@@ -18,7 +18,7 @@ from queue import Queue, Empty
 ssl._create_default_https_context = ssl._create_stdlib_context
 
 from fastapi import FastAPI, HTTPException, Response, Request
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pytubefix import YouTube, Playlist
@@ -195,10 +195,9 @@ def create_ffmpeg_stream(
     current_video_dict["actual_resolution"] = actual_size
     
     current_video_dict["loop"] = bool(loop)
-    if None not in [title, thumbnail]:
-        current_video_dict["title"] = title
-        current_video_dict["thumbnail"] = thumbnail
-        current_video_dict["file_path"] = file_path
+    current_video_dict["title"] = title
+    current_video_dict["thumbnail"] = thumbnail
+    current_video_dict["file_path"] = file_path
 
     logging.info(f"Process {process.pid} started for {video_type.value} video: {file_path}")
     process_dict[video_type] = process.pid
@@ -550,11 +549,16 @@ async def state():
 
 
 @app.post("/file/play/")
-async def play_file(file_path: str = None, title: str = None, thumbnail: str = None):
+async def play_file(
+    file_path: str = None,
+    title: str = None,
+    thumbnail: str = None,
+    loop: bool = False
+):
     try:
         # Check if playing cache or a disk directory/file
         if file_path == "cache":
-            threading.Thread(target=handle_cache_play).start()
+            enqueue_all_cached()
             return {"detail": "Success"}
 
         if file_path is None:
@@ -562,7 +566,7 @@ async def play_file(file_path: str = None, title: str = None, thumbnail: str = N
         if os.path.isdir(file_path):
             # Recursively traverse directory using os.walk and play video files
             def play_directory_thread(dir_path):
-                for root, dirs, files in os.walk(dir_path):
+                for root, directories, files in os.walk(dir_path):
                     for file in sorted(files):
                         if file.lower().endswith(('.mp4', '.mkv', '.avi', '.mov')):
                             full_path = os.path.join(root, file)
@@ -579,7 +583,7 @@ async def play_file(file_path: str = None, title: str = None, thumbnail: str = N
                             )
                             # If the video ended on its own (return non-zero), break out
                             if response != 0:
-                                break
+                                return
 
                             # there's some sort of delay on node media server
                             # if you immediately play the next file sometimes it
@@ -849,8 +853,13 @@ def get_metrics():
     )
 
 
-@app.get("/cache")
-def get_cache():
+@app.get("/view")
+def get_cache(path: str = None):
+    # If no path parameter is present, redirect to default ?path=cache
+    if path == args.videopath:
+        return RedirectResponse(url="/view", status_code=303)
+    
+    # Otherwise, serve the HTML page
     return FileResponse("static/cache.html")
 
 
@@ -944,4 +953,3 @@ if __name__ == "__main__":
         port=args.port,
         reload=True,
     )
-
