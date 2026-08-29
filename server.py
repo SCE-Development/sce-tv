@@ -195,10 +195,9 @@ def create_ffmpeg_stream(
     current_video_dict["actual_resolution"] = actual_size
     
     current_video_dict["loop"] = bool(loop)
-    if None not in [title, thumbnail]:
-        current_video_dict["title"] = title
-        current_video_dict["thumbnail"] = thumbnail
-        current_video_dict["file_path"] = file_path
+    current_video_dict["title"] = title
+    current_video_dict["thumbnail"] = thumbnail
+    current_video_dict["file_path"] = file_path
 
     logging.info(f"Process {process.pid} started for {video_type.value} video: {file_path}")
     process_dict[video_type] = process.pid
@@ -550,11 +549,16 @@ async def state():
 
 
 @app.post("/file/play/")
-async def play_file(file_path: str = None, title: str = None, thumbnail: str = None):
+async def play_file(
+    file_path: str = None,
+    title: str = None,
+    thumbnail: str = None,
+    loop: bool = False
+):
     try:
         # Check if playing cache or a disk directory/file
         if file_path == "cache":
-            threading.Thread(target=handle_cache_play).start()
+            enqueue_all_cached()
             return {"detail": "Success"}
 
         if file_path is None:
@@ -849,7 +853,7 @@ def get_metrics():
     )
 
 
-@app.get("/cache")
+@app.get("/view")
 def get_cache():
     return FileResponse("static/cache.html")
 
