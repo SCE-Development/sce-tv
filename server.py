@@ -265,7 +265,7 @@ def stop_all_videos():
 
 
 # terminate a parent process and all its child processes using a specified signal.
-def kill_child_processes(parent_pid, sig=signal.SIGILL):
+def kill_child_processes(parent_pid, sig=signal.SIGKILL):
     try:
         parent = psutil.Process(parent_pid)
         parent.send_signal(sig)
