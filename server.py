@@ -566,7 +566,7 @@ async def play_file(
         if os.path.isdir(file_path):
             # Recursively traverse directory using os.walk and play video files
             def play_directory_thread(dir_path):
-                for root, dirs, files in os.walk(dir_path):
+                for root, directories, files in os.walk(dir_path):
                     for file in sorted(files):
                         if file.lower().endswith(('.mp4', '.mkv', '.avi', '.mov')):
                             full_path = os.path.join(root, file)
