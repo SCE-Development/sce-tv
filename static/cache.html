@@ -1,244 +1,182 @@
 <!DOCTYPE html>
 <html>
+
 <head>
   <title>SCE TV Cache</title>
   <link rel="stylesheet" href="cache.css">
 </head>
+
 <body>
   <button id="go_back_btn">Go back to main page</button>
+  <button id="viewFilesOnDiskBtn">View files on disk</button>
   <h1>SCE TV Cache</h1>
-  <h3>Cache Storage</h3>
-  <div id="cacheStorageInfo">
-    <p><strong>Used:</strong> <span id="usedBytes">Loading...</span></p>
-    <p><strong>Available:</strong> <span id="availableBytes">Loading...</span></p>
-  </div>
-  <button id="playEntireDirectoryBtn">play entire directory</button>
+  <button id="playEntireDirectoryBtn">Play entire directory</button>
   <!-- Video -->
-  <div id="listOfVideosContainer" >
+  <div id="listOfVideosContainer">
   </div>
+
   <script>
-          document.getElementById('go_back_btn').addEventListener('click', () => {
-            let url = window.location.href
-            window.location.href = window.location.href.substring(0, url.lastIndexOf('/') )
+    document.getElementById('go_back_btn').addEventListener('click', () => {
+      let url = window.location.href;
+      window.location.href = window.location.href.substring(0, url.lastIndexOf('/'));
+    });
 
-          });
-          let debugUrl = new URL("debug", window.location.href)
-          async function togglePlayVideo(e, video) {
-                  try {
-                    e.preventDefault();
-                    const file_path = video.path;
-                    const title = video.name;
-                    const thumbnail = video.thumbnail;
-                    let url = new URL("play/file", window.location.href)
-                    url.searchParams.append("file_path", file_path)
-                    url.searchParams.append("title", title)
-                    url.searchParams.append("thumbnail", thumbnail)
-                    const response = await fetch(url.href, { method: "POST" });
-                    return response.json()
-                  } catch(error) {
-                    console.log(error)
-                  } 
-            }
+    document.getElementById('viewFilesOnDiskBtn').addEventListener('click', () => {
+      // Calls /file/list with no args by stripping query params
+      window.location.href = window.location.pathname;
+    });
 
-          async function deleteVideo(e, video) {
-            try {
-              e.preventDefault();
-              const file_path = video.path;
-              let url = new URL("delete/file", window.location.href);
-              url.searchParams.append("id", video.id);
-              const response = await fetch(url.href, { method: "POST" });
-              return response.json();
-            } catch(error) {
-              console.log(error);
-            } 
-          }
+    async function togglePlayVideo(e, video) {
+      try {
+        e.preventDefault();
+        const file_path = video.path;
+        const title = video.name;
+        const thumbnail = video.thumbnail;
+        let url = new URL("file/play/", window.location.href);
+        url.searchParams.append("file_path", file_path);
+        if (title) url.searchParams.append("title", title);
+        if (thumbnail) url.searchParams.append("thumbnail", thumbnail);
+        const response = await fetch(url.href, { method: "POST" });
+        return response.json();
+      } catch (error) {
+        console.log(error);
+      }
+    }
 
-          async function togglePlayEntireDirectory(e) {
-            try {
-              e.preventDefault()
-              let url = new URL("play/file", window.location.href)
-              const response = await fetch(url.href, { method: "POST" })
-              return response.json()
-            } catch(error) {
-              console.log(error)
-            }
-          }
+    async function togglePlayEntireDirectory(e) {
+      try {
+        e.preventDefault();
+        let url = new URL("file/play/", window.location.href);
+        const urlParams = new URLSearchParams(window.location.search);
+        const currentPath = urlParams.get('path');
 
-          async function handlePlayEntireDirectoryButton(e) {
-            const playEntireDirectoryBtn = document.getElementById('playEntireDirectoryBtn');
-            playEntireDirectoryBtn.disabled = true;
-            const response = await togglePlayEntireDirectory(e)
-            console.log(response)
-            if (response["detail"] === "Success") {
-                playEntireDirectoryBtn.textContent = "Success!";
-                setTimeout(() => {
-                  playEntireDirectoryBtn.textContent = "Play entire directory";
-                  playEntireDirectoryBtn.disabled = false;
-                }, 2000);
-            } 
-            else {
-                playEntireDirectoryBtn.disabled = false;
-                alert(response["detail"]);
-            }  
-          }
-
-          async function handlePlayButton(e, video, deleteButton) {
-            const playButton = document.getElementById(video.id)
-            const response = await togglePlayVideo(e, video)
-            if (response["detail"] === "Success") {
-            playButton.textContent = "Success!";
-            playButton.disabled = true;
-            deleteButton.disabled = true;
-            
-            setTimeout(() => {
-              playButton.textContent = "play";
-              playButton.disabled = false;
-            }, 2000);
-          } else {
-            alert(response["detail"]);
-          }  
+        if (currentPath) {
+          url.searchParams.append("file_path", currentPath);
         }
-          
-          async function handleDeleteButton(e, video, deleteButton, videoContainer) {
-            if (!deleteButton.classList.contains("delete-clicked")) {
-              deleteButton.classList.add("delete-clicked");
-              deleteButton.textContent = "confirm deletion?";
-              setTimeout(() => {
-                deleteButton.textContent = "delete";
-                deleteButton.classList.remove("delete-clicked");
-              }, 2000);
-            } else {
-              const response = await deleteVideo(e, video);
-              if (response["detail"] === "Success") {
-                videoContainer.remove();
-                handleBytes();
-                if (document.getElementById('listOfVideosContainer').childElementCount === 0) {
-                  document.getElementById('playEntireDirectoryBtn').disabled = true;
-                }
-              } else {
-                alert(response["detail"]);
-              }
-            }
-          }
 
-          function formatBytes(bytes) {
-            if (bytes === 0) return '0 bytes';
-            const sizes = ['bytes', 'kb', 'mb', 'gb', 'tb'];
-            const i = Math.floor(Math.log(bytes) / Math.log(1024));
-            return parseFloat((bytes / Math.pow(1024, i)).toFixed(2)) + ' ' + sizes[i];
-          }
+        const response = await fetch(url.href, { method: "POST" });
+        return response.json();
+      } catch (error) {
+        console.log(error);
+      }
+    }
 
-          async function handleBytes() {
-            try{
-              const response = await fetch(debugUrl.href)
-              const data = await response.json()
-              let usedBytes = data.cache.current_size_bytes
-              let availableBytes = data.cache.max_size_bytes - usedBytes
-              document.getElementById('usedBytes').textContent = formatBytes(usedBytes) + " used " + "(" + usedBytes + " bytes)";
-              document.getElementById('availableBytes').textContent = formatBytes(availableBytes)  + " available " + "(" + availableBytes + " bytes)" ;
-            } catch(error){
-              console.log(error)
-              document.getElementById('usedBytes').textContent = 'error loading';
-              document.getElementById('availableBytes').textContent = 'error loading';
-            }
-          }
+    async function handlePlayEntireDirectoryButton(e) {
+      const playEntireDirectoryBtn = document.getElementById('playEntireDirectoryBtn');
+      playEntireDirectoryBtn.disabled = true;
+      const response = await togglePlayEntireDirectory(e);
+      console.log(response);
+      if (response && response["detail"] === "Success") {
+        playEntireDirectoryBtn.textContent = "Success!";
+        setTimeout(() => {
+          playEntireDirectoryBtn.textContent = "Play entire directory";
+          playEntireDirectoryBtn.disabled = false;
+        }, 2000);
+      } else {
+        playEntireDirectoryBtn.disabled = false;
+        alert(response ? response["detail"] : "Error");
+      }
+    }
 
-          function parseResponse(data) {
-            // Store the returned object in a variable
-            const returnedObject = JSON.parse(data)
-            if (returnedObject.length === 0) {
-              console.log("No videos found")
-              document.getElementById('playEntireDirectoryBtn').disabled = true;
-            }
-            // Fetch the state to determine which video is currently playing
-            let currentVideoPath;
-            const baseURL = window.location.href.substring(0, window.location.href.lastIndexOf('/'));
-            const stateURL = new URL(baseURL + "/state", window.location.origin);
-            fetch(stateURL.href).then((response) => response.json()).then((json) => {
-              const state = json["state"];
-              if (state === "playing") {
-                currentVideoPath = json["nowPlaying"]["file_path"];
-              }
-            }).then( () => {
-              // Loop through each element in the object and render it on the screen
-              for (const element of returnedObject) {
-                const listOfVideosContainer = document.getElementById('listOfVideosContainer');
-                const videoContainer = document.createElement('div');
-                const videoImgContainer = document.createElement('div');
-                const videoTitleContainer = document.createElement('div');
-                const videoImg = document.createElement('img');
-                const videoTitle = document.createElement('p');
-                const playButton = document.createElement('button');
-                const deleteButton = document.createElement('button');
-                const videoMetaContainer = document.createElement('div');
-                const videoDateContainer = document.createElement('div');
-                const videoSize = document.createElement('span');
-                const videoDateAdded = document.createElement('span');
-                const playEntireDirectoryBtn = document.getElementById('playEntireDirectoryBtn');
+    async function handlePlayButton(e, video) {
+      const playButton = document.getElementById(video.id);
+      const response = await togglePlayVideo(e, video);
+      if (response && response["detail"] === "Success") {
+        playButton.textContent = "Success!";
+        playButton.disabled = true;
 
-                videoContainer.id = "videoContainer";
-                videoImgContainer.id = "videoImgContainer";
-                videoTitleContainer.id = "videoTitleContainer";
-                videoMetaContainer.id = "videoMetaContainer";
-                videoDateContainer.id = "videoDateContainer";
-                playButton.id = element.id;
-                playButton.className = "playButton";
-                deleteButton.className = "deleteButton";
-                videoSize.className = "videoSize";
-                videoDateAdded.className = "videoDateAdded";
+        setTimeout(() => {
+          playButton.textContent = "Play";
+          playButton.disabled = false;
+        }, 2000);
+      } else {
+        alert(response ? response["detail"] : "Error");
+      }
+    }
 
-                videoTitle.textContent = element.name;
-                videoImg.src = element.thumbnail;
-                videoImg.alt = "thumbnail";
-                playButton.textContent = 'play';
-                deleteButton.textContent = 'delete';
-                videoSize.textContent = formatBytes(element.size_bytes);
-                videoDateAdded.textContent = element.date_added
-                  ? "Added " + new Date(element.date_added).toLocaleString()
-                  : "Added: unknown";
-                
-                if (element.path === currentVideoPath) {
-                  deleteButton.disabled = true;
-                }
-          
-                playButton.addEventListener('click', (e) => {
-                  handlePlayButton(e, element, deleteButton);
-                });
+    function parseResponse(data) {
+      const returnedObject = JSON.parse(data);
+      const playEntireDirectoryBtn = document.getElementById('playEntireDirectoryBtn');
 
-                deleteButton.addEventListener('click', (e) => {
-                  handleDeleteButton(e, element, deleteButton, videoContainer);
-                });
+      if (returnedObject.length === 0) {
+        console.log("No files found");
+        playEntireDirectoryBtn.disabled = true;
+      }
 
-                playEntireDirectoryBtn.addEventListener('click', handlePlayEntireDirectoryButton);
+      playEntireDirectoryBtn.addEventListener('click', handlePlayEntireDirectoryButton);
 
-                videoImgContainer.appendChild(videoImg);
-                videoTitleContainer.appendChild(videoTitle);
-                videoMetaContainer.appendChild(videoSize);
-                videoDateContainer.appendChild(videoDateAdded);
-                videoContainer.appendChild(videoImgContainer);
-                videoContainer.appendChild(videoTitleContainer);
-                videoContainer.appendChild(videoMetaContainer);
-                videoContainer.appendChild(videoDateContainer);
-                videoContainer.appendChild(playButton);
-                videoContainer.appendChild(deleteButton);
-                listOfVideosContainer.appendChild(videoContainer);
-    
-              }
-            })
-          }
+      for (const element of returnedObject) {
+        const listOfVideosContainer = document.getElementById('listOfVideosContainer');
+        const videoContainer = document.createElement('div');
+        const videoImgContainer = document.createElement('div');
+        const videoTitleContainer = document.createElement('div');
+        const videoImg = document.createElement('img');
+        const videoTitle = document.createElement('p');
+        const actionButton = document.createElement('button');
+
+        videoContainer.id = "videoContainer";
+        videoImgContainer.id = "videoImgContainer";
+        videoTitleContainer.id = "videoTitleContainer";
+        actionButton.id = element.id;
+
+        videoTitle.textContent = element.name;
+        videoImg.src = element.thumbnail || "";
+        videoImg.alt = element.type === "directory" ? "folder" : "thumbnail";
+
+        if (element.type === "directory") {
+          actionButton.textContent = 'Open Folder';
+          actionButton.className = "folderButton";
+          actionButton.addEventListener('click', () => {
+            window.location.href = window.location.pathname + "?path=" + encodeURIComponent(element.path);
+          });
+        } else {
+          actionButton.textContent = 'Play';
+          actionButton.className = "playButton";
+          actionButton.addEventListener('click', (e) => {
+            handlePlayButton(e, element);
+          });
+        }
+
+        videoImgContainer.appendChild(videoImg);
+        videoTitleContainer.appendChild(videoTitle);
+        videoContainer.appendChild(videoImgContainer);
+        videoContainer.appendChild(videoTitleContainer);
+        videoContainer.appendChild(actionButton);
+        listOfVideosContainer.appendChild(videoContainer);
+      }
+    }
   </script>
-  
+
   <script>
-    let url = new URL("list", window.location.href)
-    fetch(url.href)
+    const urlParams = new URLSearchParams(window.location.search);
+    let path = urlParams.get('path');
+
+    const diskBtn = document.getElementById('viewFilesOnDiskBtn');
+
+    if (path === 'cache') {
+        diskBtn.textContent = "View files on disk";
+        diskBtn.addEventListener('click', () => {
+            window.location.href = window.location.pathname;
+        });
+    } else {
+        diskBtn.textContent = "View files on cache";
+        diskBtn.addEventListener('click', () => {
+            window.location.href = window.location.pathname + "?path=cache";
+        });
+    }
+
+    let fetchUrl = new URL("file/list", window.location.href);
+    if (path) {
+      fetchUrl.searchParams.append("path", path);
+    }
+
+    fetch(fetchUrl.href)
       .then(response => response.json())
       .then(data => parseResponse(data))
       .catch(error => {
         console.error('Error:', error);
       });
-      handleBytes()
   </script>
-
 </body>
-</html>
 
+</html>

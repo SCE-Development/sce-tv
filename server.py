@@ -549,33 +549,63 @@ async def state():
     return result
 
 
-
-@app.post("/play/file")
-async def play_file(file_path: str = "cache", title: str = None, thumbnail: str = None):
+@app.post("/file/play/")
+async def play_file(file_path: str = None, title: str = None, thumbnail: str = None):
     try:
-        # Stop all videos when pressing play, this also breaks out of video loops
-        stop_all_videos()
-        cancel_event.clear()
-
-        # Check if we are going to play all videos or a single video in the cache
+        # Check if playing cache or a disk directory/file
         if file_path == "cache":
-            enqueue_all_cached()
+            threading.Thread(target=handle_cache_play).start()
             return {"detail": "Success"}
 
-        # Add a single video in the cache into the queue
-        cache_video_config = VideoConfig(
-            url_type=UrlType.VIDEO,
-            url=None,
-            loop=False,
-            title=title,
-            thumbnail=thumbnail,
-            play_interlude_after=False,
-        )
-        play_video_queue.put((cache_video_config, file_path))
+        if file_path is None:
+            file_path = args.videopath
+        if os.path.isdir(file_path):
+            # Recursively traverse directory using os.walk and play video files
+            def play_directory_thread(dir_path):
+                for root, dirs, files in os.walk(dir_path):
+                    for file in sorted(files):
+                        if file.lower().endswith(('.mp4', '.mkv', '.avi', '.mov')):
+                            full_path = os.path.join(root, file)
+                            
+                            current_video_dict["title"] = file
+                            current_video_dict["thumbnail"] = thumbnail or ""
+                            
+                            response = create_ffmpeg_stream(
+                                full_path,
+                                State.PLAYING,
+                                loop=False,
+                                title=file,
+                                thumbnail=thumbnail or "",
+                            )
+                            # If the video ended on its own (return non-zero), break out
+                            if response != 0:
+                                break
+
+                            # there's some sort of delay on node media server
+                            # if you immediately play the next file sometimes it
+                            # fails, so this magic wait prevents a failure
+                            time.sleep(5)
+
+            threading.Thread(target=play_directory_thread, args=(file_path,)).start()
+            
+        else:
+            # Play a single file
+            threading.Thread(
+                target=create_ffmpeg_stream,
+                args=(
+                    file_path,
+                    State.PLAYING,
+                    False,
+                    title,
+                    thumbnail,
+                ),
+            ).start()
+
         return {"detail": "Success"}
-    except Exception:
-        logging.exception("Unable to play file from cache")
-        raise HTTPException(status_code=500, detail="Check logs")
+
+    except Exception as e:
+        logging.exception(e)
+        raise HTTPException(status_code=500, detail="check logs")
 
 
 @app.post("/play")
@@ -763,23 +793,51 @@ async def stop():
         stop_video_by_type(State.PLAYING)
 
 
-@app.get("/list")
-async def getVideos():
+@app.get("/file/list")
+async def getVideos(path: str = None):
+    if path == "cache":
+        returnedResponse = []
+        for key, value in video_cache.video_id_to_path.items():
+            returnedResponse.append(
+                {
+                    "id": key,
+                    "name": value.title,
+                    "path": value.file_path,
+                    "thumbnail": value.thumbnail,
+                    "type": "file",
+                }
+            )
+        return json.dumps(returnedResponse)
+    
+    # If no path is provided, default to the disk base video path
+    target_path = path if path else args.videopath
+    
+    if not os.path.exists(target_path):
+        return json.dumps([])
+
     returnedResponse = []
-    file_size = 0
-    for key, value in video_cache.video_id_to_path.items():
-        if os.path.exists(value.file_path):
-            file_size = os.path.getsize(value.file_path)
-        returnedResponse.append(
-            {
-                "id": key,
-                "name": value.title,
-                "path": value.file_path,
-                "thumbnail": value.thumbnail,
-                "size_bytes": file_size,
-                "date_added": value.date_added,
-            }
-        )
+    for entry in os.scandir(target_path):
+        if entry.is_dir():
+            returnedResponse.append(
+                {
+                    "id": entry.name,
+                    "name": entry.name,
+                    "path": entry.path,
+                    "thumbnail": "", # Optional folder thumbnail or icon
+                    "type": "directory",
+                }
+            )
+        elif entry.is_file() and entry.name.lower().endswith(('.mp4', '.mkv', '.avi', '.mov')):
+            returnedResponse.append(
+                {
+                    "id": entry.name,
+                    "name": entry.name,
+                    "path": entry.path,
+                    "thumbnail": "",
+                    "type": "file",
+                }
+            )
+            
     return json.dumps(returnedResponse)
 
 
