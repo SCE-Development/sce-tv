@@ -93,19 +93,36 @@ if __name__ == '__main__':
             "Indicates whether the received stream is running (1=running, 0=stopped)"
             )
 
+    vlc_instance = vlc.Instance(
+        "--network-caching=3000",
+        "--clock-jitter=0",
+        "--clock-synchro=0",
+    )
+
     while 1:
+        player = None
+
         try:
-            media = vlc.MediaPlayer(args.rtmp_stream_url)
-            media.play()
+            player = vlc_instance.media_player_new()
+            media = vlc_instance.media_new(args.rtmp_stream_url)
+            player.set_media(media)
+            player.play()
             #stream_running.set(1)
             sleep(5)
             while not stream_is_dead(media):
                 stream_running.set(1)
                 sleep(1)
-            media.stop()
-            stream_running.set(0)
+                
         except Exception as e:
             print("we crashed", e)
+        
+        finally:
             stream_running.set(0)
+
+            if player is not None:
+                player.stop()
+                player.release()
+        
+        sleep(5)
 
 ```
