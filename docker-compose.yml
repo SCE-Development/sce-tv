@@ -23,7 +23,7 @@ services:
       - ./static/:/app/static/
       - ./modules:/app/modules
       - ./videos:/tmp/videos:rw
-
+  
 networks: 
   default:
     external: 

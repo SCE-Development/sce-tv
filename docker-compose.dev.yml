@@ -1,10 +1,12 @@
 version: '2'
+
 services:
   streaming-server:
     image: 'illuspas/node-media-server'
     container_name: nms
     ports:
       - '1935:1935'
+
   app:
     build:
       context: .
@@ -12,6 +14,7 @@ services:
     command:
       - --videopath=/tmp/videos
       - --rtmp-stream-url=rtmp://nms:1935/live/mystream
+      - --download-monitoring-interval=30
       # uncomment the below to test an interlude. a file called
       # interlude.mp4 must exist in this project in the `videos` folder.
       # there is an unresolved bug where the server doesn't reload
@@ -26,6 +29,7 @@ services:
       - ./videos:/tmp/videos:rw
     environment:
       - WATCHFILES_FORCE_POLLING=true
+
   prometheus:
     image: prom/prometheus:latest
     restart: always
@@ -35,3 +39,17 @@ services:
       - --config.file=/etc/prometheus/prometheus.yml
     ports:
       - 9090:9090
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    restart: always
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    volumes:
+      - grafana-data:/var/lib/grafana
+
+volumes:
+  grafana-data:

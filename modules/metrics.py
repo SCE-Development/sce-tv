@@ -21,7 +21,7 @@ class Metrics(enum.Enum):
         "subprocess_count",
         "Number of subprocesses ended",
         prometheus_client.Counter,
-        ["exit_code"],  # 0, 137, 1 etc
+        ["exit_code"],  # 0, 137, 1 etc.
     )
 
     DOWNLOAD_TIME = (
@@ -75,15 +75,44 @@ class Metrics(enum.Enum):
 
     STREAM_STATE = (
         "stream_state",
-        "Indicates whether the given stream type is running (1=running, 0=stopped)",
+        "Indicates whether the given stream type is running "
+        "(1=running, 0=stopped)",
         prometheus_client.Gauge,
         ["video_type"],
     )
 
+    DOWNLOAD_MONITOR_SUCCESS = (
+        "download_monitor_success",
+        "Whether the most recent monitoring download succeeded",
+        prometheus_client.Gauge,
+    )
+
+    DOWNLOAD_MONITOR_DURATION_SECONDS = (
+        "download_monitor_duration_seconds",
+        "Duration of the most recent monitoring download in seconds",
+        prometheus_client.Gauge,
+    )
+
+    DOWNLOAD_MONITOR_FAILURES_TOTAL = (
+        "download_monitor_failures_total",
+        "Total number of failed monitoring downloads",
+        prometheus_client.Counter,
+    )
+
+    DOWNLOAD_BITRATE = (
+        "download_bitrate_bytes_per_second",
+        "Observed bitrate of the 360p test video download in bytes per second",
+        prometheus_client.Histogram,
+    )
+
+    DOWNLOAD_BITRATE_LATEST = (
+        "download_bitrate_latest_bytes_per_second",
+        "Bitrate of the most recent 360p test video download "
+        "in bytes per second",
+        prometheus_client.Gauge,
+    )
+
     def __init__(self, title, description, prometheus_type, labels=()):
-        # we use the above default value for labels because it matches what's used
-        # in the prometheus_client library's metrics constructor, see
-        # https://github.com/prometheus/client_python/blob/fd4da6cde36a1c278070cf18b4b9f72956774b05/prometheus_client/metrics.py#L115
         self.title = title
         self.description = description
         self.prometheus_type = prometheus_type
@@ -92,12 +121,14 @@ class Metrics(enum.Enum):
 
 class MetricsHandler:
     @classmethod
-    def init(self) -> None:
+    def init(cls) -> None:
         for metric in Metrics:
             setattr(
-                self,
+                cls,
                 metric.title,
                 metric.prometheus_type(
-                    metric.title, metric.description, labelnames=metric.labels
+                    metric.title,
+                    metric.description,
+                    labelnames=metric.labels,
                 ),
             )
