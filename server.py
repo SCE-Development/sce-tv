@@ -29,7 +29,7 @@ import psutil
 from modules.args import get_args
 from modules.cache import Cache
 from modules.metrics import MetricsHandler
-
+from modules.download_interval import download_loop
 
 logging.Formatter.converter = time.gmtime
 logging.basicConfig(
@@ -345,6 +345,14 @@ def download_video(config: VideoConfig):
                 write_log_to_client(f"Failed to download {config.url}")
         return video_path
 
+def start_download_monitor():
+    # Run download monitor loop thread in background if an interval is defined
+    if args.download_monitoring_interval > 0:
+        threading.Thread(
+            target = download_loop,
+            args = (args.download_monitoring_interval,),
+            daemon = True
+        ).start()
 
 # Worker Thread for video playing.
 def play_video_worker():
@@ -933,6 +941,7 @@ if __name__ == "server":
     MetricsHandler.init()
     MetricsHandler.cache_size.set(0)
     MetricsHandler.cache_size_bytes.set(0)
+    start_download_monitor()
     
     # Start up interlude by default
     if args.interlude:
