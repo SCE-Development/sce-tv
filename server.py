@@ -58,8 +58,8 @@ class UrlType(enum.Enum):
 # Video Configuration
 @dataclass
 class VideoConfig:
-    url_type: UrlType
-    url: str
+    url_type: UrlType = UrlType.VIDEO
+    url: str = ''
     loop: bool = False
     title: str = None
     thumbnail: str = None
@@ -129,14 +129,7 @@ def _compute_scaled_size(in_w: int, in_h: int, target_h: int):
 def create_ffmpeg_stream(
     file_path: str,
     video_type: State,
-    loop=False,
-    title=None,
-    thumbnail=None,
-    play_interlude_after=True,
-    announcement=False,
-    duration=5,
-    requested_height: int | None = None,
-    actual_size: dict | None = None
+    config: VideoConfig
 ):
     if file_path is None:
         logging.info("file_path is None. ffmpeg_stream cancelled.")
@@ -152,7 +145,7 @@ def create_ffmpeg_stream(
         "-i",
         file_path,
         "-vf",
-        f"scale=-2:{requested_height}" if requested_height else "scale=640:360",
+        f"scale=-2:{config.requested_height}" if config.requested_height else "scale=640:360",
         "-c:v",
         "libx264",
         "-preset",
@@ -168,14 +161,8 @@ def create_ffmpeg_stream(
         args.rtmp_stream_url,
     ]
 
-    if announcement:
-        command[2:2] = ["-loop", "1"]
-        command[command.index("-vf") + 1] += (",drawtext=expansion=none:fontfile=/usr/share/fonts/truetype/freefont/FreeSerif.ttf:" 
-                                            "textfile='/tmp/videos/announcement.txt':" 
-                                            "fontsize=h/10: x=(w-text_w)/2: y=(h-text_h)/2")
-
     # Loop the video stream
-    if loop:
+    if config.loop:
         command[2:2] = ["-stream_loop", "-1"]
     process = subprocess.Popen(
         command,
@@ -187,32 +174,22 @@ def create_ffmpeg_stream(
 
     current_video_dict.clear()  
     
-    if requested_height:
-        current_video_dict["requested_height"] = int(requested_height)
+    if config.requested_height:
+        current_video_dict["requested_height"] = int(config.requested_height)
     else:
         current_video_dict["requested_height"] = None
 
-    current_video_dict["actual_resolution"] = actual_size
+    current_video_dict["actual_resolution"] = config.actual_size
     
-    current_video_dict["loop"] = bool(loop)
-    current_video_dict["title"] = title
-    current_video_dict["thumbnail"] = thumbnail
+    current_video_dict["loop"] = bool(config.loop)
+    current_video_dict["title"] = config.title
+    current_video_dict["thumbnail"] = config.thumbnail
     current_video_dict["file_path"] = file_path
 
     logging.info(f"Process {process.pid} started for {video_type.value} video: {file_path}")
     process_dict[video_type] = process.pid
     MetricsHandler.streams_count.labels(video_type=video_type.value).inc(amount=1)
     MetricsHandler.stream_state.labels(video_type=video_type.value).set(1)
-
-    # If duration is nonpositive, the announcement is played indefinitely
-    # The loop checks every 0.5 secs to check if the subprocess has already exited
-    # If the end of duration is reached, end the ffmpeg stream
-    if announcement and duration > 0:
-        for _ in range(duration*2):
-            if process.poll() is not None:
-                break
-            time.sleep(0.5)
-        kill_child_processes(process.pid)
 
     # the below function returns 0 if the video ended on its own
     # 137, 1
@@ -230,7 +207,7 @@ def create_ffmpeg_stream(
 
     MetricsHandler.stream_state.labels(video_type=video_type.value).set(0)
 
-    if (exit_code == 0 or video_type == State.PLAYING) and play_interlude_after and args.interlude:
+    if (exit_code == 0 or video_type == State.PLAYING) and config.play_interlude_after and args.interlude:
         interlude_lock.release()
     logging.info(f"Process {process.pid} exited with code {exit_code}")
     write_log_to_client(f"Process {process.pid} exited with code {exit_code}")
@@ -282,7 +259,7 @@ def handle_interlude():
         interlude_lock.acquire()
         write_log_to_client("Interlude thread unblocked...")
         # Check if the interlude stream is already running
-        create_ffmpeg_stream(args.interlude, State.INTERLUDE, loop=True)
+        create_ffmpeg_stream(args.interlude, State.INTERLUDE, VideoConfig(loop=True))
 
 
 # Removes all entries in a queue
@@ -373,12 +350,7 @@ def play_video(video_path: str, config: VideoConfig):
         exit_code = create_ffmpeg_stream(
             video_path,
             State.PLAYING,
-            config.loop,
-            config.title,
-            config.thumbnail,
-            play_interlude_after=config.play_interlude_after,
-            requested_height=config.requested_height, 
-            actual_size=config.actual_size,
+            config,
         )
         return exit_code
     except Exception as e:
@@ -574,12 +546,14 @@ async def play_file(
                             current_video_dict["title"] = file
                             current_video_dict["thumbnail"] = thumbnail or ""
                             
+                            config = VideoConfig(
+                                title=file,
+                                thumbnail=thumbnail or "",
+                            )
                             response = create_ffmpeg_stream(
                                 full_path,
                                 State.PLAYING,
-                                loop=False,
-                                title=file,
-                                thumbnail=thumbnail or "",
+                                config
                             )
                             # If the video ended on its own (return non-zero), break out
                             if response != 0:
