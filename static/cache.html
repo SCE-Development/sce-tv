@@ -37,6 +37,12 @@
         url.searchParams.append("file_path", file_path);
         if (title) url.searchParams.append("title", title);
         if (thumbnail) url.searchParams.append("thumbnail", thumbnail);
+
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has('override')) {
+            url.searchParams.append('override', urlParams.get('override'));
+        }
+
         const response = await fetch(url.href, { method: "POST" });
         return response.json();
       } catch (error) {

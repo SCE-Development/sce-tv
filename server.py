@@ -67,6 +67,7 @@ class VideoConfig:
     repeat: bool = False
     requested_height: int = None
     actual_size: dict = None
+    stream_override: str = None
 
 
 # Create FastAPI instance
@@ -138,6 +139,11 @@ def create_ffmpeg_stream(
     if stop_all_processes():
         time.sleep(5)
 
+    rtmp_stream_url = args.rtmp_stream_url
+
+    if config.stream_override:
+        rtmp_stream_url = os.path.join(rtmp_stream_url, config.stream_override)
+
     # Create a subprocess to stream the video using FFmpeg
     command = [
         "ffmpeg",
@@ -158,7 +164,7 @@ def create_ffmpeg_stream(
         "44100",
         "-f",
         "flv",
-        args.rtmp_stream_url,
+        rtmp_stream_url,
     ]
 
     # Loop the video stream
@@ -525,7 +531,8 @@ async def play_file(
     file_path: str = None,
     title: str = None,
     thumbnail: str = None,
-    loop: bool = False
+    loop: bool = False,
+    override: str = None,
 ):
     try:
         # Check if playing cache or a disk directory/file
@@ -549,6 +556,7 @@ async def play_file(
                             config = VideoConfig(
                                 title=file,
                                 thumbnail=thumbnail or "",
+                                stream_override=override,
                             )
                             response = create_ffmpeg_stream(
                                 full_path,
@@ -577,6 +585,7 @@ async def play_file(
                         loop=False,
                         title=title,
                         thumbnail=thumbnail,
+                        stream_override=override,
                     )
                 ),
             ).start()

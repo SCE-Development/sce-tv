@@ -133,6 +133,11 @@
             let playURL = new URL(window.location.pathname + "play", window.location.origin)
             playURL.searchParams.append("url", encodeURIComponent(url))
             playURL.searchParams.append("resolution", resolution);
+
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.has('override')) {
+                playURL.searchParams.append('override', urlParams.get('override'));
+            }
             
             playButton.textContent = "Success!";
             if (videoWillLoop) {

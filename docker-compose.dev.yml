@@ -11,7 +11,7 @@ services:
       dockerfile: Dockerfile
     command:
       - --videopath=/tmp/videos
-      - --rtmp-stream-url=rtmp://nms:1935/live/mystream
+      - --rtmp-stream-url=rtmp://nms:1935/live/
       - --cache-state-file=/tmp/videos/state.json
       # uncomment the below to test an interlude. a file called
       # interlude.mp4 must exist in this project in the `videos` folder.
