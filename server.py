@@ -573,9 +573,11 @@ async def play_file(
                 args=(
                     file_path,
                     State.PLAYING,
-                    False,
-                    title,
-                    thumbnail,
+                    VideoConfig(
+                        loop=False,
+                        title=title,
+                        thumbnail=thumbnail,
+                    )
                 ),
             ).start()
 
