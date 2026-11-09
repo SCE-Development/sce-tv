@@ -857,34 +857,6 @@ def startup():
     threading.Thread(target=play_video_worker, daemon=True).start()
 
 
-@app.get("/announcement")
-async def announcement():
-    return FileResponse("static/announcement.html")
-
-
-@app.post("/play/text")
-async def play_text(announcement: str = None, duration: int = 5):
-    announcement = unquote(announcement)
-    with open("/tmp/videos/announcement.txt", "w") as announcement_file:
-        announcement_file.write(announcement)
-    # Start a thread to play the announcement
-    threading.Thread(
-        target=create_ffmpeg_stream,
-        args=(
-            "/app/static/background.png",
-            State.PLAYING,
-            False,
-            "(announcement) - \"" + announcement + "\"",
-            "background.png",
-            True,
-            True,
-            duration
-        )
-    ).start()
-
-    return {"detail": "Success"}
-
-
 @app.on_event("shutdown")
 def signal_handler():
     stop_all_videos()
