@@ -31,4 +31,10 @@ def get_args():
         "--cache-state-file",
         help="JSON file to persist cache state on server shutdown and recover on startup. if specified, the server will not empty the cache on shutdown"
     )
+    parser.add_argument(
+        "--download-monitoring-interval",
+        type=int,
+        default=0,
+        help="run download monitoring loop every interval, interval=0 to disable monitoring"
+    )
     return parser.parse_args()
