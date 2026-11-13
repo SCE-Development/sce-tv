@@ -3,309 +3,58 @@
 
 <head>
     <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="index.css">
-    <link rel="icon" href="favicon.ico">
-    <title>Burger</title>
+    <title>SCE TV</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" href="favicon.ico" type="image/x-icon" />
+    <link rel="shortcut icon" href="favicon.ico" type="image/x-icon" />
 </head>
 
 <body>
-    <div style="text-align: center; position: relative;">
-        <div id="logs-box">
-            <div id="logs-content"></div>
-        </div>
-        <div class="card">
-            <div style="display: flex; justify-content: center; align-items: center; flex-direction: column;">
-                <div style="display: flex; justify-content: center; align-items: center; padding-bottom: 5px;">
-                    <h2 id="cache_tag">SCE TV</h2>
-                </div>
-                <div style="display: flex; justify-content: center; align-items: center; padding-bottom: 10px;">
-                    <button id="show-logs-btn">Show Logs</button>
-                    <button id="debug-btn">Debug</button>
-                </div>
-            </div>
-
-
-            <div id="urlInput">
-                <input type="text" id="url" onchange="OnUrlChange(event, true)"
-                    placeholder="PASTE A YOUTUBE LINK FOR EPICNESS">
-                <select id="resolution">
-                    <option value="144">144p</option>
-                    <option value="240">240p</option>
-                    <option value="360">360p</option>
-                    <option value="720">720p</option>
-                    <option value="1080">1080p</option>
-                </select>
-                <button type="button" id="loop" style="background-color: blue;">Loop Video?</button>
-                <button type="button" id="play" style="background-color: green;">Play</button>
-            </div>
-            <div id="cacheStatus" style="display: none; color: white; font-weight: bold; padding-top: 10px;">
-                Nice, the video is already cached!
+    <div class="container">
+        <h1>
+            <a
+                class="static-link"
+                href="cache.html"
+            >
+                SCE TV
+            </a>
+        </h1>
+        <div class="now-playing animated" style="display: none;">
+            <h3 id="now-playing-title" hidden>now playing:</h3>
+            <h2 id="video-title" class="title-header" hidden></h2>
+            <img id="video-thumbnail" class="thumbnail-img" hidden>
+            <div class="button-container">
+                <button id="stop" hidden>stop!</button>
             </div>
         </div>
-        <input type="checkbox" id="rate-limiter" style="visibility: hidden;">
-        <div id="playing">
-            <div class="card">
-                <div id="metadata">
-                    <div style="display: flex; align-items: center; justify-content: center;">
-                        <h2 style="white-space: pre-wrap;">NOW PLAYING: </h2>
-                        <h2 id="title"></h2>
-                    </div>
-                    <button type="button" id="stop" style="background-color:red;" onclick="Stop(event)">Stop</button>
-                    <div id="thumbnail-container" style="position: relative; display: inline-block;">
-                        <img id="thumbnail" style="border-style: solid;border-width: 3px;border-radius: 25px;" width="640">
-                        <div id="announcement-text"></div>
-                    </div>
-                </div>
-
+        <div class="enter-url">
+            <input id="url" placeholder="enter youtube url" />
+            <div class="button-container">
+                <button id="get-video-seconds" hidden>play video from certain point!</button>
+                <button id="loop-video" hidden>loop video?</button>
+                <p id="video-in-playlist-prompt" hidden>
+                    note: this video is part of a playlist. SCE TV will
+                    only consider videos between this video and the
+                    end of the playlist as the "playlist."
+                </p>
+                <button id="submit" hidden>go</button>
+            </div>
+            <br>
+            <p id="humanized-start-time"></p>
+            <input id="start-offset-seconds" type="range" hidden />
+            <input id="last-requested-duration-url" type="text" hidden />
+            <input id="was-metadata-requested" type="checkbox" hidden />
+            <input id="is-playlist" type="checkbox" hidden />
+            <input id="loop-video" type="checkbox" hidden />
+            <div class="preview-video animated">
+                <h2 id="preview-video-title" class="title-header" hidden>the video</h2>
+                <img id="preview-video-thumbnail" class="thumbnail-img" hidden>
             </div>
         </div>
     </div>
-    <script>
-        document.addEventListener('DOMContentLoaded', function () {
-            var logsBox = document.getElementById('logs-box');
-            if (logsBox) logsBox.style.display = 'none';
-        });
-        let stateURL = new URL(window.location.pathname + "state", window.location.origin)
-        let stopURL = new URL(window.location.pathname + "stop", window.location.origin)
-        let playButton = document.getElementById("play");
-        let loopButton = document.getElementById("loop");
-        let urlInput = document.getElementById("url");
-        let rateLimiterCheckbox = document.getElementById("rate-limiter");
-        let videoWillLoop = false;
-        window.addEventListener("load", () => {
-            fetch(stateURL.href)
-                .then(r => r.json())
-                .then(json => {
-                addLogMessage("INITIAL_STATE=" + JSON.stringify(json));
-                })
-            });
-        let mouseDownTime = null;
-
-        // hold click for repeat mode
-        playButton.addEventListener('mousedown', () => {
-            mouseDownTime = Date.now();
-        });
-        playButton.addEventListener('mouseup', () => {
-            if (mouseDownTime) {
-                const holdTime = Date.now() - mouseDownTime;
-                mouseDownTime = null;
-                if (holdTime >= 750) {
-                    // Toggle repeat attribute on play button
-                    if (playButton.hasAttribute('repeat')) {
-                        playButton.removeAttribute('repeat');
-                        playButton.textContent = "Play";
-                        playButton.style.backgroundColor = "green";
-                    } else {
-                        playButton.setAttribute('repeat', 'true');
-                        playButton.textContent = "Play on Repeat";
-                        playButton.style.backgroundColor = "#466D1D";
-                    }
-                }
-            }
-        });
-
-        playButton.addEventListener("click", Play);
-        loopButton.addEventListener("click", toggleLoopVideo);
-        urlInput.addEventListener("input", OnUrlChange);
-
-        const eventSource = new EventSource(new URL(window.location.pathname + "events", window.location.origin).href);
-        eventSource.onmessage = (event) => {
-            const message = JSON.parse(event.data);
-            addLogMessage(message.message);
-        };
-
-        async function toggleLoopVideo() {
-            videoWillLoop = !videoWillLoop;
-            if (videoWillLoop) {
-                loopButton.textContent = "Video will loop!";
-                loopButton.style.backgroundColor = "darkblue";
-            } else {
-                loopButton.textContent = "Loop Video?";
-                loopButton.style.backgroundColor = "blue";
-            }
-        }
-
-        async function Play(e) {
-            e.preventDefault();
-            const url = document.getElementById('url').value;
-            const resolution = document.getElementById('resolution').value;
-            let playURL = new URL(window.location.pathname + "play", window.location.origin)
-            playURL.searchParams.append("url", encodeURIComponent(url))
-            playURL.searchParams.append("resolution", resolution);
-            
-            playButton.textContent = "Success!";
-            if (videoWillLoop) {
-                playURL.searchParams.append("loop", 1)
-            }
-            if (playButton.hasAttribute('repeat')) {
-                playURL.searchParams.append("repeat", 1)
-            }
-
-            const response = await fetch(playURL.href, {
-                method: "POST",
-            });
-            const res_json = await response.json();
-
-            if (res_json["detail"] === "Success") {
-                playButton.textContent = "Success!";
-                playButton.disabled = true;
-                document.getElementById("playing").style.display = "block";
-                //Manually upate the stop button, or else it won't update unless page is reloaded
-                document.getElementById("playing").style.visibility="visible";
-
-                // Display message if video is already in cache
-                if (!!res_json.in_cache) {
-                    document.getElementById("cacheStatus").style.display="inline";
-                    setTimeout(() => {
-                        document.getElementById("cacheStatus").style.display="none";
-                    }, 3000);
-                }
-
-                setTimeout(() => {
-                    if (playButton.hasAttribute('repeat')) {
-                        playButton.textContent = "Play on Repeat";
-                    } else {
-                        playButton.textContent = "Play";
-                    }
-                    playButton.disabled = false;
-                }, 2000);
-            }
-            else {
-                alert(res_json["detail"]);
-                if (playButton.hasAttribute('repeat')) {
-                    playButton.textContent = "Play on Repeat";
-                } else {
-                    playButton.textContent = "Play";
-                }
-            }
-        }
-
-        async function Stop(e) {
-            e.preventDefault();
-            await fetch(stopURL.href, { method: "POST" });
-            document.getElementById("metadata").style.visibility = "hidden";
-            document.getElementById("playing").style.display = "none";
-        }
-  
-        // Add a function to navigate to the cache page when clicking on the h2 tag
-        document.getElementById("cache_tag").addEventListener("click", function () {
-            window.location.href = window.location.href + "view?path=cache";
-        });
-
-        async function OnUrlChange(e, override = false) {
-            const url = document.getElementById('url').value;
-            const reg = /https:\/\/www\.youtube\.com\/(playlist|watch)\?(list|v)=\w+/;
-            // If the rate limiter is not checked (or override) and the URL is a valid YouTube URL
-            // Then update the metadata
-            if ((override || !rateLimiterCheckbox.checked) && reg.test(url)) {
-                await UpdateMetadata(url);
-            }
-        }
-
-        async function UpdateMetadata(url) {
-            // Fetch the metadata for the video and update the UI
-            let metadataURL = new URL(window.location.pathname + "metadata", window.location.origin)
-            metadataURL.searchParams.append("url", encodeURIComponent(url))
-            fetch(metadataURL.href)
-                .then(response => {
-                    // If the response is not OK, throw an error
-                    if (!response.ok)
-                        throw new Error("Invalid URL!");
-                    return response.json();
-                })
-                .then(data => {
-                    // If the data is valid, update the UI
-                    document.getElementById("metadata").style.visibility = "visible";
-                    document.getElementById('title').innerHTML = data["title"];
-                    document.getElementById('thumbnail').src = data["thumbnail"];
-                    if (data["thumbnail"] === "background.png") {
-                        document.getElementById('announcement-text').innerHTML = data["title"].slice(18, -1);
-                    } else {
-                        document.getElementById('announcement-text').innerHTML = "";
-                    }
-                    rateLimiterCheckbox.checked = true;
-                })
-                .catch(err => {
-                    // If there is an error, show an alert and hide the playing div
-                    document.getElementById("metadata").style.visibility = "hidden";
-                    alert(err);
-                });
-        }
-
-
-        fetch(stateURL.href)
-            .then(r => r.json())
-            .then(json => {
-
-                const state = json?.state;
-                if (state !== "playing") {
-                document.getElementById("metadata").style.visibility = "hidden";
-                document.getElementById("playing").style.display = "none";
-                return;
-                }
-
-                const np = json?.nowPlaying;
-                if (!np) {
-                console.warn("Missing nowPlaying in state payload:", json);
-                document.getElementById("metadata").style.visibility = "hidden";
-                document.getElementById("playing").style.display = "block"; 
-                return;
-                }
-
-                document.getElementById("playing").style.display = "block";
-                document.getElementById("metadata").style.visibility = "visible";
-                document.getElementById("title").textContent = np.title ?? "";
-                document.getElementById("thumbnail").src = np.thumbnail ?? "";
-
-                const ann = document.getElementById("announcement-text");
-                if ((np.thumbnail ?? "") === "background.png") {
-                  ann.textContent = (np.title ?? "").slice(18, -1);
-                 } else {
-                   ann.textContent = "";
-                 }
-            })
-            .catch(err => console.error("state fetch failed:", err));
-
-        // Toggle Show Logs button text and show/hide logs box
-        document.getElementById("show-logs-btn").addEventListener("click", function () {
-            const logsBox = document.getElementById("logs-box");
-            if (this.textContent === "Show Logs") {
-                this.textContent = "Hide";
-                logsBox.style.display = "flex";
-            } else {
-                this.textContent = "Show Logs";
-                logsBox.style.display = "none";
-            }
-        });
-
-        // Function to add a log message to the logs box with a timestamp
-        function addLogMessage(message) {
-            const logsContent = document.getElementById('logs-content');
-            const logEntry = document.createElement('code');
-            const now = new Date();
-            const timestamp = now.toISOString();
-            logEntry.textContent = `${timestamp}: ${message}`;
-            logsContent.appendChild(logEntry);
-            // Scroll to bottom
-            logsContent.scrollTop = logsContent.scrollHeight;
-        }
-        setInterval(() => {
-  fetch(stateURL.href)
-    .then(r => r.json())
-    .then(json => {
-    });
-}, 2000);
-
-        // Adds a function to open the debug page in a new window when the debug button is clicked
-        document.getElementById("debug-btn").addEventListener("click", function () {
-            const debugURL = new URL(window.location.origin + window.location.pathname);
-            debugURL.pathname = debugURL.pathname.endsWith('/') 
-            ? `${debugURL.pathname}debug` 
-            : `${debugURL.pathname}/debug`;
-            window.open(debugURL);
-        });
-    </script>
+    <script src="main.js"></script>
 </body>
 
 </html>

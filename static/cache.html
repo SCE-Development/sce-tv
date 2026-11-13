@@ -1,202 +1,213 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 
 <head>
-  <title>SCE TV Cache</title>
-  <link rel="stylesheet" href="cache.css">
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SCE TV: Static Content Edition</title>
+    <style>
+        .entry {
+            display: flex;
+            justify-content: space-between;
+            max-width: 50em;
+            border: 0.5px dashed gainsboro;
+            height: 58px;
+        }
+        .entry > p {
+            word-break: break-all;
+        }
+        .btn-group > button {
+            height: 100%;
+            width: 53px;
+        }
+    </style>
 </head>
 
 <body>
-  <button id="go_back_btn">Go back to main page</button>
-  <button id="viewFilesOnDiskBtn">View files on disk</button>
-  <h1>SCE TV Cache</h1>
-  <button id="playEntireDirectoryBtn">Play entire directory</button>
-  <button id="viewParentDirBtn" style="display: none;">View parent directory</button>
-  <!-- Video -->
-  <div id="listOfVideosContainer">
-  </div>
+    <button id="scetv-btn">back to sce tv</button>
+    <button id="cache-btn">view disk cache</button>
+    <button id="home-btn">go to top directory</button>
+    <button id="back-btn">↩ go back</button>
+    <h2 id="path-title"></h2>
+    <button id="play-dir-btn">play entire directory</button>
+    <div id="country"></div>
+    <script>
+        const stream = window.location.host.split('.')[0];
+        let parent = null;
 
-  <script>
-    document.getElementById('go_back_btn').addEventListener('click', () => {
-      let url = window.location.href;
-      window.location.href = window.location.href.substring(0, url.lastIndexOf('/'));
-    });
+        const urlSearchParams = new URLSearchParams(window.location.search);
+        const params = Object.fromEntries(urlSearchParams.entries());
 
-    document.getElementById('viewFilesOnDiskBtn').addEventListener('click', () => {
-      // Calls /file/list with no args by stripping query params
-      window.location.href = window.location.pathname;
-    });
-
-    async function togglePlayVideo(e, video) {
-      try {
-        e.preventDefault();
-        const file_path = video.path;
-        const title = video.name;
-        const thumbnail = video.thumbnail;
-        let url = new URL("file/play/", window.location.href);
-        url.searchParams.append("file_path", file_path);
-        if (title) url.searchParams.append("title", title);
-        if (thumbnail) url.searchParams.append("thumbnail", thumbnail);
-        const response = await fetch(url.href, { method: "POST" });
-        return response.json();
-      } catch (error) {
-        console.log(error);
-      }
-    }
-
-    async function togglePlayEntireDirectory(e) {
-      try {
-        e.preventDefault();
-        let url = new URL("file/play/", window.location.href);
-        const urlParams = new URLSearchParams(window.location.search);
-        const currentPath = urlParams.get('path');
-
-        if (currentPath) {
-          url.searchParams.append("file_path", currentPath);
+        function playVideo(path, loop=false, name=null, thumbnail=null) {
+            const url = new URL('file/play', window.location.href);
+            fetch(url.href, {
+                method: 'POST',
+                body: JSON.stringify({
+                    path,
+                    loop,
+                    stream,
+                    title: name || path,
+                    thumbnail,
+                })
+            });
         }
 
-        const response = await fetch(url.href, { method: "POST" });
-        return response.json();
-      } catch (error) {
-        console.log(error);
-      }
-    }
-
-    async function handlePlayEntireDirectoryButton(e) {
-      const playEntireDirectoryBtn = document.getElementById('playEntireDirectoryBtn');
-      playEntireDirectoryBtn.disabled = true;
-      const response = await togglePlayEntireDirectory(e);
-      console.log(response);
-      if (response && response["detail"] === "Success") {
-        playEntireDirectoryBtn.textContent = "Success!";
-        setTimeout(() => {
-          playEntireDirectoryBtn.textContent = "Play entire directory";
-          playEntireDirectoryBtn.disabled = false;
-        }, 2000);
-      } else {
-        playEntireDirectoryBtn.disabled = false;
-        alert(response ? response["detail"] : "Error");
-      }
-    }
-
-    async function handlePlayButton(e, video) {
-      const playButton = document.getElementById(video.id);
-      const response = await togglePlayVideo(e, video);
-      if (response && response["detail"] === "Success") {
-        playButton.textContent = "Success!";
-        playButton.disabled = true;
-
-        setTimeout(() => {
-          playButton.textContent = "Play";
-          playButton.disabled = false;
-        }, 2000);
-      } else {
-        alert(response ? response["detail"] : "Error");
-      }
-    }
-
-    function parseResponse(data) {
-      const returnedObject = JSON.parse(data);
-      const playEntireDirectoryBtn = document.getElementById('playEntireDirectoryBtn');
-
-      if (returnedObject.length === 0) {
-        console.log("No files found");
-        playEntireDirectoryBtn.disabled = true;
-      }
-
-      playEntireDirectoryBtn.addEventListener('click', handlePlayEntireDirectoryButton);
-
-      for (const element of returnedObject) {
-        const listOfVideosContainer = document.getElementById('listOfVideosContainer');
-        const videoContainer = document.createElement('div');
-        const videoImgContainer = document.createElement('div');
-        const videoTitleContainer = document.createElement('div');
-        const videoImg = document.createElement('img');
-        const videoTitle = document.createElement('p');
-        const actionButton = document.createElement('button');
-
-        videoContainer.id = "videoContainer";
-        videoImgContainer.id = "videoImgContainer";
-        videoTitleContainer.id = "videoTitleContainer";
-        actionButton.id = element.id;
-
-        videoTitle.textContent = element.name;
-        videoImg.src = element.thumbnail || "";
-        videoImg.alt = element.type === "directory" ? "folder" : "thumbnail";
-
-        if (element.type === "directory") {
-          actionButton.textContent = 'Open Folder';
-          actionButton.className = "folderButton";
-          actionButton.addEventListener('click', () => {
-            window.location.href = window.location.pathname + "?path=" + encodeURIComponent(element.path);
-          });
-        } else {
-          actionButton.textContent = 'Play';
-          actionButton.className = "playButton";
-          actionButton.addEventListener('click', (e) => {
-            handlePlayButton(e, element);
-          });
-        }
-
-        videoImgContainer.appendChild(videoImg);
-        videoTitleContainer.appendChild(videoTitle);
-        videoContainer.appendChild(videoImgContainer);
-        videoContainer.appendChild(videoTitleContainer);
-        videoContainer.appendChild(actionButton);
-        listOfVideosContainer.appendChild(videoContainer);
-      }
-    }
-  </script>
-
-  <script>
-    const urlParams = new URLSearchParams(window.location.search);
-    let path = urlParams.get('path') || '';
-
-    const diskBtn = document.getElementById('viewFilesOnDiskBtn');
-
-    const parentBtn = document.getElementById('viewParentDirBtn');
-
-    // Count slashes in the path string
-    const slashCount = (path.match(/\//g) || []).length;
-
-    // Show button if it has more than 1 slash
-    if (slashCount > 1) {
-        parentBtn.style.display = 'inline-block'; // or 'block' depending on your styling
-
-        parentBtn.addEventListener('click', () => {
-            // Find the last slash to go up one directory level
-            const lastSlashIndex = path.lastIndexOf('/');
-            if (lastSlashIndex !== -1) {
-                const parentPath = path.substring(0, lastSlashIndex);
-                window.location.href = window.location.pathname + "?path=" + encodeURIComponent(parentPath);
+        function deleteVideo(videoId, videoName) {
+            if (!confirm(`Delete "${videoName}"?`)) {
+                return;
             }
-        });
-    }
+            const url = new URL('api/cache/delete', window.location.href);
+            fetch(url.href, {
+                method: 'POST',
+                body: JSON.stringify({
+                    id: videoId,
+                })
+            });
+        }
 
-    if (path === 'cache') {
-        diskBtn.textContent = "View files on disk";
-        diskBtn.addEventListener('click', () => {
-            window.location.href = window.location.pathname;
-        });
-    } else {
-        diskBtn.textContent = "View files on cache";
-        diskBtn.addEventListener('click', () => {
-            window.location.href = window.location.pathname + "?path=cache";
-        });
-    }
+        function backToSceTv() {
+            let url = window.location.href;
+            window.location.href = window.location.href.substring(0, url.lastIndexOf('/'));
+        }
 
-    let fetchUrl = new URL("file/list", window.location.href);
-    if (path) {
-      fetchUrl.searchParams.append("path", path);
-    }
+        function goToCachePage() {
+            const placeToGo = window.location.href.split('?')[0] + '?path=cache';
+            window.location.href = placeToGo;
+        }
 
-    fetch(fetchUrl.href)
-      .then(response => response.json())
-      .then(data => parseResponse(data))
-      .catch(error => {
-        console.error('Error:', error);
-      });
-  </script>
+        function goHome(path = '') {
+            if (path) {
+                window.location.href = window.location.href.split('?')[0] + '?path=' + path;
+                return;
+            }
+            window.location.href = window.location.href.split('?')[0];
+        }
+
+        function maybeRenderThumbnail(item={}) {
+            if (!item.thumbnail) {
+                return ''
+            }
+            return `<img src="${item.thumbnail}" width="100">`
+        }
+
+        function maybeRenderThumbnailAndTitleAttributes(item={}) {
+            let result = '';
+            if (item.thumbnail) {
+                result += ` data-thumbnail="${item.thumbnail}"`;
+            }
+            if (item.name) {
+                result += ` data-name="${item.name}"`;
+            }
+            return result;
+        }
+
+        function maybeRenderDeleteButton(videoId, videoName) {
+            if (
+                params.delete &&
+                params.path === 'cache' &&
+                videoId
+            ) {
+                return `
+                    <button
+                        data-name="${videoName}"
+                        value=${videoId}
+                        class="delete-btn"
+                    >
+                        Delete
+                    </button>`;
+            }
+            return '';
+        }
+
+        fetch(`file/list${params.path ? '?path=' + params.path : ''}`)
+            .then(x => x.json())
+            .then((result) => {
+                const urlParams = new URLSearchParams(window.location.search);
+                const path = urlParams.get('path') || '';
+                const slashCount = (path.match(/\//g) || []).length;
+                console.log({path, slashCount})
+                const parentButton = document.getElementById('back-btn');
+                if (slashCount) {
+                    const parent = path.substring(0, path.lastIndexOf('/'));
+                    parentButton.removeAttribute('hidden');
+                    parentButton.addEventListener('click', () => goHome(parent));
+                } else {
+                    parentButton.setAttribute('hidden', 'true');
+                }
+                let output = '';
+                document.getElementById('path-title').textContent = params.path;
+                result.forEach(function (item) {
+                    if (item.is_directory) {
+                        const placeToGo = window.location.href.split('?')[0] + '?path=' + encodeURIComponent(item.path);
+                        output += `
+                        <div class="entry">
+                            <a href=${placeToGo}>
+                                <p>${item.name}/</p>
+                            </a>
+                        </div>
+                        `
+                    } else {
+                        output += `
+                        <div class="entry">
+                            ${maybeRenderThumbnail(item)}
+                            <p>${item.name}</p>
+                            <div class="btn-group">
+                                <button
+                                    class="play-btn"
+                                    ${maybeRenderThumbnailAndTitleAttributes(item)}
+                                    value="${item.path}""
+                                >
+                                    play
+                                </button>
+                                ${maybeRenderDeleteButton(item.id, item.name)}
+                            </div>
+                        </div>
+                        `
+                    }
+                })
+                document.getElementById('country').innerHTML = output;
+                const maybePlayButtons = document.getElementsByClassName('play-btn');
+                const maybeDeleteButtons = document.getElementsByClassName('delete-btn');
+                if (maybePlayButtons) {
+                    for (var i = 0; i < maybePlayButtons.length; i++) {
+                        maybePlayButtons[i].addEventListener(
+                            'click',
+                            (e) => playVideo(
+                                e.target.value,
+                                false,
+                                e.target.dataset.name,
+                                e.target.dataset.thumbnail,
+                            ),
+                            false,
+                        );
+                    }
+                }
+                if (maybeDeleteButtons) {
+                    for (var i = 0; i < maybeDeleteButtons.length; i++) {
+                        maybeDeleteButtons[i].addEventListener(
+                            'click',
+                            (e) => deleteVideo(e.target.value, e.target.dataset.name,),
+                            false,
+                        );
+                    }
+                }
+            })
+            .catch(err => console.error(err));
+        if (!params.path) {
+            document.getElementById('home-btn').setAttribute('hidden', 'true');
+            document.getElementById('scetv-btn').removeAttribute('hidden');
+            document.getElementById('cache-btn').removeAttribute('hidden');
+        } else {
+            document.getElementById('home-btn').removeAttribute('hidden');
+            document.getElementById('scetv-btn').setAttribute('hidden', 'true');
+            document.getElementById('cache-btn').setAttribute('hidden', 'true');
+        }
+        document.getElementById('play-dir-btn').addEventListener('click', () => playVideo(params.path, true), false);
+        document.getElementById('home-btn').addEventListener('click', () => goHome());
+        document.getElementById('scetv-btn').addEventListener('click', backToSceTv);
+        document.getElementById('cache-btn').addEventListener('click', goToCachePage);
+    </script>
 </body>
 
 </html>

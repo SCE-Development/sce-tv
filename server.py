@@ -501,12 +501,12 @@ async def log_event(request: Request):
     write_log_to_client("I HAVE A ")
     return {"message": "Log sent to clients"}
 
-@app.get("/state")
+@app.get("/api/state")
 async def state():
     global last_state_snapshot
 
     if State.PLAYING in process_dict:
-        result = {"state": State.PLAYING.value, "nowPlaying": current_video_dict}
+        result = {"state": State.PLAYING.value, "now_playing": current_video_dict}
     elif State.INTERLUDE in process_dict:
         result = {"state": State.INTERLUDE.value}
     else:
@@ -520,13 +520,13 @@ async def state():
     return result
 
 
-@app.post("/file/play/")
-async def play_file(
-    file_path: str = None,
-    title: str = None,
-    thumbnail: str = None,
-    loop: bool = False
-):
+@app.post("/file/play")
+async def play_file(request: Request):
+    data = await request.json()
+    file_path = data.get('path')
+    title = data.get('title')
+    thumbnail = data.get('thumbnail')
+    loop = data.get('loop')
     try:
         # Check if playing cache or a disk directory/file
         if file_path == "cache":
@@ -720,10 +720,11 @@ async def play(url: str, loop: bool = False, repeat: bool = False, resolution: i
         raise HTTPException(status_code=500, detail="check logs")
 
 
-@app.post("/delete/file")
-async def delete_file(id: str):
+@app.post("/api/cache/delete")
+async def delete_file(request: Request):
+    data = await request.json()
     try:
-        video_cache.delete(id)
+        video_cache.delete(data['id'])
         return {"detail": "Success"}
     except Exception:
         logging.exception('unable to delete file from cache')
@@ -762,7 +763,7 @@ def metadata(url: str):
         raise HTTPException(status_code=500, detail="Check logs")
 
 
-@app.post("/stop")
+@app.post("/api/stop")
 async def stop():
     cancel_event.set()
     current_video_dict.clear()
@@ -784,10 +785,10 @@ async def getVideos(path: str = None):
                     "name": value.title,
                     "path": value.file_path,
                     "thumbnail": value.thumbnail,
-                    "type": "file",
+                    "is_directory": False,
                 }
             )
-        return json.dumps(returnedResponse)
+        return returnedResponse
     
     # If no path is provided, default to the disk base video path
     target_path = path if path else args.videopath
@@ -804,7 +805,7 @@ async def getVideos(path: str = None):
                     "name": entry.name,
                     "path": entry.path,
                     "thumbnail": "", # Optional folder thumbnail or icon
-                    "type": "directory",
+                    "is_directory": True,
                 }
             )
         elif entry.is_file() and entry.name.lower().endswith(('.mp4', '.mkv', '.avi', '.mov')):
@@ -814,11 +815,11 @@ async def getVideos(path: str = None):
                     "name": entry.name,
                     "path": entry.path,
                     "thumbnail": "",
-                    "type": "file",
+                    "is_directory": False,
                 }
             )
             
-    return json.dumps(returnedResponse)
+    return returnedResponse
 
 
 @app.get("/metrics")
