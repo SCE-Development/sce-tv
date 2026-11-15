@@ -143,10 +143,11 @@
                     parentButton.setAttribute('hidden', 'true');
                 }
                 let output = '';
-                document.getElementById('path-title').textContent = params.path;
+                document.getElementById('path-title').textContent = decodeURIComponent(params.path);
                 result.content.forEach(function (item) {
                     if (item.is_directory) {
-                        const placeToGo = window.location.href.split('?')[0] + '?path=' + encodeURIComponent(item.path);
+                        const placeToGo = new URL(window.location.href);
+                        placeToGo.searchParams.set('path', encodeURIComponent(item.path));
                         output += `
                         <div class="entry">
                             <a class="preserve-params" href=${placeToGo}>
