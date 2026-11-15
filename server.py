@@ -572,7 +572,7 @@ async def delete(request: Request):
     return {"result": cache.delete(data["videoId"])}
 
 
-@app.post("/stop")
+@app.post("/api/stop")
 async def stop(request: Request):
     data = await request.json()
     validate_stream_name(data)
@@ -584,7 +584,7 @@ async def stop(request: Request):
     return {"success": video_stopped}
 
 
-@app.get("/state")
+@app.get("/api/state")
 async def play(stream: typing.Optional[str] = None):
     validate_stream_name({"stream": stream})
     rtmp_stream_url = args.rtmp_stream_url or os.path.join(args.rtmp_base_url, stream)
