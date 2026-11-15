@@ -173,7 +173,11 @@ function showVideoPreview(visible=false) {
 // ====================================================================
 // Requests to APIs
 // ====================================================================
-const stream = window.location.host.split('.')[0];
+const urlSearchParams = new URLSearchParams(window.location.search);
+const stream = (
+    urlSearchParams.get('stream') ||
+    window.location.host.split('.')[0]
+);
 
 async function handleSubmit(e) {
   const { value: clipboardContents } = document.getElementById('url');

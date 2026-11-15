@@ -1,34 +1,69 @@
 import argparse
 
-def get_args():
+
+def get_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--videopath",
-        help="path for video cache to be stored",
-        default="./"
-    )
-    parser.add_argument(
-        "--interlude",
-        help="file path to interlude file",
-    )
-    parser.add_argument(
         "--host",
-        help="ip address to listen for requests on, i.e. 0.0.0.0",
-        default='0.0.0.0',
+        default="0.0.0.0",
+        help="the location to stream downloaded files to, i.e. rtmp://localhost/stream/live"
     )
     parser.add_argument(
         "--port",
         type=int,
-        help="port for the server to listen on, defaults to 5001",
-        default=5001
+        default=9000,
+        help="the location to stream downloaded files to, i.e. rtmp://localhost/stream/live"
     )
     parser.add_argument(
         "--rtmp-stream-url",
-        required=True,
         help="the location to stream downloaded files to, i.e. rtmp://localhost/stream/live"
+    )
+    parser.add_argument(
+        "--rtmp-base-url",
+        help="base url of the rtmp stream, i.e. rtmp://localhost/stream. meant to be used with --rtmp-stream-names"
+    )
+    parser.add_argument(
+        "--rtmp-stream-names",
+        type=str,
+        help="""
+            names of streams to append to the base url, i.e. supplying
+            "foo,bar" with a base url of rtmp://localhost/stream makes
+            the server stream to rtmp://localhost/stream/foo and
+            rtmp://localhost/stream/bar
+        """
+    )
+    parser.add_argument(
+        "--download-file-location",
+        required=True,
+        help="directory to store of downloaded videos"
+    )
+    parser.add_argument(
+        "--interlude-file-path",
+        help="path to interlude file"
+    )
+    parser.add_argument(
+        "--cache-size-bytes",
+        type=int,
+        # 2GB default
+        default=2_000_000_000,
+        help="total file size of downloaded video cache. default 2GB"
     )
     parser.add_argument(
         "--cache-state-file",
         help="JSON file to persist cache state on server shutdown and recover on startup. if specified, the server will not empty the cache on shutdown"
     )
-    return parser.parse_args()
+    parser.add_argument(
+        "--thumbnail-cache-size",
+        type=int,
+        default=20,
+        help="total file size of thumbnail cache, max number of pngs to store at any time"
+    )
+    parser.add_argument(
+        "--prometheus-port",
+        type=int,
+        default=5000,
+        help="total file size of cache"
+    )
+    args = parser.parse_args()
+    args.rtmp_stream_names = args.rtmp_stream_names.split(',') if args.rtmp_stream_names else []
+    return args

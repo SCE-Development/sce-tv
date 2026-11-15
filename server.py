@@ -1,814 +1,594 @@
-import enum
+import collections
 import os
-import json
-import subprocess
-import threading
-from urllib.parse import unquote
-import uvicorn
+import pathlib
+import queue
 import signal
-import ssl
+import subprocess
+import sys
 import time
-from pathlib import Path
-import asyncio  # Add this import for async queues
-from dataclasses import dataclass
-from typing import List, Tuple
-from queue import Queue, Empty
+import threading
+import typing
+from urllib.parse import unquote
 
-ssl._create_default_https_context = ssl._create_stdlib_context
-
-from fastapi import FastAPI, HTTPException, Response, Request
-from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
+from fastapi import FastAPI, HTTPException, Response
+from fastapi import Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from pytubefix import YouTube, Playlist
-import pytubefix.exceptions
 import prometheus_client
 import psutil
+import uvicorn
 
 from modules.args import get_args
-from modules.cache import Cache
 from modules.logger import logger
+from modules.cache import Cache
+from modules.constants import Video, UrlType
 from modules.metrics import MetricsHandler
+from modules import youtube_helpers
 
 
-# Enum for the state of the video being processed
-class State(enum.Enum):
-    IDLE = 'idle'
-    INTERLUDE = "interlude"
-    PLAYING = "playing"
-
-
-# Enum for the type of URL being processed
-class UrlType(enum.Enum):
-    VIDEO = "video"
-    PLAYLIST = "playlist"
-    EMPTY = "empty"
-    UNKNOWN = "unknown"
-
-# Video Configuration
-@dataclass
-class VideoConfig:
-    url_type: UrlType = UrlType.VIDEO
-    url: str = ''
-    loop: bool = False
-    title: str = None
-    thumbnail: str = None
-    play_interlude_after: bool = True
-    repeat: bool = False
-    requested_height: int = None
-    actual_size: dict = None
-
-
-# Create FastAPI instance
 app = FastAPI()
-
-# This dictionary is used to store the process IDs of running subprocesses, keyed by the type of video being processed (interlude or playing).
-process_dict = {}
-
-# This dictionary is used to store the title and thumbnail of the currently playing video.
-current_video_dict = {}
-
-# Threading Locks
-interlude_lock = threading.Lock()
-
-state_lock = threading.Lock()
-last_state_snapshot = None
-
-download_lock = threading.Lock()
-
 args = get_args()
 
-cancel_event = threading.Event()
+# yes i know the default param is 1 but this is
+# so reading this later with 0 context makess sense
+interlude_mutex = collections.defaultdict(lambda: threading.Semaphore(1))
+process_dict_mutex = threading.Semaphore(1)
 
-# Create a cache object to store video files, initializing it with the file path specified in the command-line arguments or configuration settings. This instance is used to cache downloaded videos.
-video_cache = Cache(file_path=args.videopath, cache_file=args.cache_state_file)
+process_dict = collections.defaultdict(dict)
+current_playlist = collections.defaultdict(lambda: queue.Queue())
+cache = Cache(
+    args.download_file_location,
+    args.cache_size_bytes,
+    args.cache_state_file,
+)
 
-# Queue for video downloading
-download_url_queue: Queue[VideoConfig] = Queue()
-
-# Queue for completed videos
-play_video_queue: Queue[Tuple[VideoConfig, str]] = Queue()
-
-# Enable CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-@app.middleware("http")
-async def http_request_count(request: Request, call_next):
-    MetricsHandler.http_request_count.labels(endpoint=request.url.path).inc()
-    return await call_next(request)
+def validate_stream_name(data):
+    if not args.rtmp_stream_url:
+        if "stream" not in data:
+            raise HTTPException(
+                status_code=400, detail="`stream` field must be set if no stream URL was specified"
+            )
+        stream = data.get("stream")
+        if stream not in args.rtmp_stream_names:
+            raise HTTPException(
+                status_code=400, detail=f"{stream} is not an available stream name"
+            )
 
-# Compute output size while preserving aspect ratio
-def _compute_scaled_size(in_w: int, in_h: int, target_h: int):
-    if not in_w or not in_h or not target_h:
-        return None
-    out_h = int(target_h)
-    out_w = int(round(in_w * (out_h / in_h)))
-    # force even width for libx264
-    if out_w % 2 != 0:
-        out_w += 1
-    return out_w, out_h
-
-# return the result of process.wait()
-def create_ffmpeg_stream(
-    file_path: str,
-    video_type: State,
-    config: VideoConfig
-):
-    if file_path is None:
-        logger.info("file_path is None. ffmpeg_stream cancelled.")
-        return 2
-
-    if stop_all_processes():
-        time.sleep(5)
-
-    # Create a subprocess to stream the video using FFmpeg
-    command = [
-        "ffmpeg",
-        "-re",
-        "-i",
-        file_path,
-        "-vf",
-        f"scale=-2:{config.requested_height}" if config.requested_height else "scale=640:360",
-        "-c:v",
-        "libx264",
-        "-preset",
-        "veryfast",
-        "-tune",
-        "zerolatency",
-        "-c:a",
-        "aac",
-        "-ar",
-        "44100",
-        "-f",
-        "flv",
-        args.rtmp_stream_url,
-    ]
-
-    # Loop the video stream
-    if config.loop:
-        command[2:2] = ["-stream_loop", "-1"]
-    process = subprocess.Popen(
-        command,
-        stderr=None,
-        stdout=None,
-        text=True,
-        bufsize=1,
-    )
-
-    current_video_dict.clear()  
-    
-    if config.requested_height:
-        current_video_dict["requested_height"] = int(config.requested_height)
-    else:
-        current_video_dict["requested_height"] = None
-
-    current_video_dict["actual_resolution"] = config.actual_size
-    
-    current_video_dict["loop"] = bool(config.loop)
-    current_video_dict["title"] = config.title
-    current_video_dict["thumbnail"] = config.thumbnail
-    current_video_dict["file_path"] = file_path
-
-    logger.info(f"Process {process.pid} started for {video_type.value} video: {file_path}")
-    process_dict[video_type] = process.pid
-    MetricsHandler.streams_count.labels(video_type=video_type.value).inc(amount=1)
-    MetricsHandler.stream_state.labels(video_type=video_type.value).set(1)
-
-    # the below function returns 0 if the video ended on its own
-    # 137, 1
-    write_log_to_client(f"Process {process.pid} started for {video_type.value} video: {file_path}")
-    exit_code = process.wait()
-    write_log_to_client(f"Process {process.pid} exited with code {exit_code}")
-    logger.info(f"Process {process.pid} exited with code {exit_code}")
-  
-
-    MetricsHandler.subprocess_count.labels(
-        exit_code=exit_code,
-    ).inc()
-    if video_type in process_dict:
-        process_dict.pop(video_type)
-
-    MetricsHandler.stream_state.labels(video_type=video_type.value).set(0)
-
-    if (exit_code == 0 or video_type == State.PLAYING) and config.play_interlude_after and args.interlude:
-        interlude_lock.release()
-    logger.info(f"Process {process.pid} exited with code {exit_code}")
-    write_log_to_client(f"Process {process.pid} exited with code {exit_code}")
-
-    return exit_code
-
-
-# stop the video by type
-# have stop_video_by_type return true if kill_child_processes was called
-# else have it return false
-def stop_video_by_type(video_type: State):
-    if video_type in process_dict:
-        write_log_to_client(f"Stopping {video_type} video")
-        kill_child_processes(process_dict[video_type])
-        write_log_to_client(f"Successfully stopped {video_type} video")
-        process_dict.pop(video_type)
-        return True
-    return False
-
-
-# Stops FFMPEG stream, stop_all_processes should also return a boolean, from what stop_video_by_type returned
-def stop_all_processes():
-    return stop_video_by_type(State.INTERLUDE) or stop_video_by_type(State.PLAYING)
-
-
-# Stop FFMPEG stream and clear the queue
-def stop_all_videos():
-    # Clear the queue
-    clear_queue(play_video_queue)
-    return stop_all_processes()
-
-
-# terminate a parent process and all its child processes using a specified signal.
-def kill_child_processes(parent_pid, sig=signal.SIGKILL):
-    try:
-        parent = psutil.Process(parent_pid)
-        parent.send_signal(sig)
-        children = parent.children(recursive=True)
-        for process in children:
-            process.send_signal(sig)
-    except psutil.NoSuchProcess:
-        return
-
-
-# Start a thread to handle the interlude stream
-def handle_interlude():
-    while True:
-        # Wait for the lock to be released
-        interlude_lock.acquire()
-        write_log_to_client("Interlude thread unblocked...")
-        # Check if the interlude stream is already running
-        create_ffmpeg_stream(args.interlude, State.INTERLUDE, VideoConfig(loop=True))
-
-
-# Removes all entries in a queue
-def clear_queue(q: Queue):
-    while True:
-        try:
-            q.get_nowait()
-            q.task_done()
-        except Empty:
-            break
-
-
-# Worker thread for downloading videos.
-def download_video_worker():
-    while True:
-        # Get the config from the queue
-        config = download_url_queue.get()
-        # Download and add it to the play video queue
-        try:
-            if config is None:
-                time.sleep(1)
-                continue
-            video_path = download_video(config)
-            play_video_queue.put((config, video_path))
-        except Exception as e:
-            logger.exception(f"download_video_worker failed on {config.url}")
-            write_log_to_client(f"Failed to download {config.url}: {e}")
-        finally:
-            download_url_queue.task_done()
-
-
-# Downloads video, returns the video path
-def download_video(config: VideoConfig):
-    with download_lock:
-        # Attempt to find video in cache
-        video_path = video_cache.find(config.url)
-        # Download video if not in cache
-        if video_path is None:
-            # Check age restriction
-            try:
-                video = YouTube(config.url)
-                if video.age_restricted:
-                    write_log_to_client(f"Skipping age-restricted video: {config.url}")
-                    return None
-            except Exception as e:
-                write_log_to_client(f"Failed to check video {config.url}: {e}")
-                raise
-            write_log_to_client(f"Downloading {config.url} to disk")
-            try:
-                # Download video
-                video_cache.add(config.url)
-            except Exception as e:
-                write_log_to_client(f"Failed to download {config.url}: {e}")
-                raise
-            # Get video path of downloaded video and log
-            video_path = video_cache.find(config.url)
-            if video_path is not None:
-                write_log_to_client(f"Downloaded {config.url} to {video_path}")
-            else:
-                write_log_to_client(f"Failed to download {config.url}")
-        return video_path
-
-
-# Worker Thread for video playing.
-def play_video_worker():
-    while True:
-        # Get the video info from queue, play video, and log exit code
-        config, video_path = play_video_queue.get()
-        try:
-            if video_path is None:
-                time.sleep(1)
-                continue
-            # Play Video
-            logger.info(f"Playing {video_path}")
-            exit_code = play_video(video_path, config)
-            logger.info(f"EXIT CODE: {exit_code}")
-        finally:
-            play_video_queue.task_done()
-
-
-# Plays a video, returns exit code
-def play_video(video_path: str, config: VideoConfig):
-    try:
-        # Stop any existing streams
-        stop_all_processes()
-        # Start stream
-        write_log_to_client(f"Playing {video_path}")
-        exit_code = create_ffmpeg_stream(
-            video_path,
-            State.PLAYING,
-            config,
-        )
-        return exit_code
-    except Exception as e:
-        logger.exception(f"Error playing video: {e}")
-        write_log_to_client(f"Error playing video: {e}")
-        return 1
-
-
-# Handle video downloading based on URL type (VIDEO, PLAYLIST)
-def download_url_types(config: VideoConfig):
-    if config.url_type == UrlType.PLAYLIST:
-        # Loop to add all individual video URLs in a playlist into the queue
-        playlist = Playlist(config.url)
-        add_playlist_videos_to_download_queue(playlist, config)
-    if config.url_type == UrlType.VIDEO:
-        # Add single video to queue
-        download_url_queue.put(config)
-
-
-# Adds individual video configurations from a playlist into queue
-def add_playlist_videos_to_download_queue(playlist: Playlist, config: VideoConfig):
-    for i in range(len(playlist)):
-        # Get video information
-        video_url = playlist[i]
-        video = YouTube(video_url)
-        # Change config information into individual video
-        individual_video_config = VideoConfig(
-            url_type=UrlType.VIDEO,
-            url=video_url,
-            loop=config.loop,
-            title=video.title,
-            thumbnail=video.thumbnail_url,
-            play_interlude_after=config.play_interlude_after,
-            repeat=config.repeat,
-        )
-        # Put videos into queue
-        download_url_queue.put(individual_video_config)
-
-
-# Returns whether the URL is a playlist, video, empty or unknown
-def _get_url_type(url: str):
-    if not url or url.strip() == "":
-        return UrlType.EMPTY
-    try:
-        playlist = pytubefix.Playlist(url)
-        logger.info(f"{url} is a playlist with {len(playlist)} videos")
-        return UrlType.PLAYLIST
-    except:
-        try:
-            pytubefix.YouTube(url)
-            logger.info(f"{url} is a video")
-            return UrlType.VIDEO
-        except:
-            logger.error(f"url {url} is not a playlist or video!")
-            return UrlType.UNKNOWN
-
-
-# Returns the video config of a video in the cache
-def get_cache_config(video):
-    cache_video_config = VideoConfig(
-        url_type=UrlType.VIDEO,
-        url=None,
-        loop=False,
-        title=video.title,
-        thumbnail=video.thumbnail,
-    )
-    return cache_video_config
-
-
-# Enqueue all cached videos
-def enqueue_all_cached():
-    try:
-        cache_videos = video_cache.video_id_to_path
-        for _, cached_video in cache_videos.items():
-            cache_video_config = get_cache_config(cached_video)
-            # Prevents infinite repeating
-            cache_video_config.repeat = False
-            play_video_queue.put((cache_video_config, cached_video.file_path))
-    except Exception as e:
-        logger.exception(f"Exception enqueuing all cached: {e}")
-
-
-# Repeat Mode Easter Egg
-async def repeat_mode():
-    # Ensure cache is not empty
-    if video_cache.video_id_to_path:
-        try:
-            # Endless repeat loop until cancel_event is set
-            while not cancel_event.is_set():
-                # Keeps enqueuing cached forever
-                if play_video_queue.empty():
-                    enqueue_all_cached()
-                await asyncio.sleep(1)
-        except Exception as e:
-            logger.exception(f"Exception activating repeat mode: {e}")
-
-
-# --- SSE Log Broadcasting Integration ---
-
-# Sample default responses
-default_get_response = {
-    "message": "Default GET response"
-}
-
-default_post_response = {
-    "message": "Default POST response"
-}
-
-# List of queues for connected clients
-clients: List[asyncio.Queue] = []
-
-@app.get("/events")
-async def events(request: Request):
-    """
-    SSE endpoint. Clients connect here to receive events.
-    """
-    client_queue = asyncio.Queue()
-    clients.append(client_queue)
-
-    async def event_generator():
-        try:
-            while True:
-                if await request.is_disconnected():
-                    break
-                message = await client_queue.get()
-                yield f"data: {json.dumps(message)}\n\n"
-        finally:
-            clients.remove(client_queue)
-
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
-
-
-def write_log_to_client(message: str):
-
-    response = {
-        "message": message,
-    }
-
-    for queue in clients:
-        queue.put_nowait(response)
-
-# Example endpoint to trigger log broadcast
-@app.post("/log")
-async def log_event(request: Request):
-    data = await request.json()
-    request_type = data.get("requestType", "POST")
-    response_data = data.get("responseData", {})
-    write_log_to_client("I HAVE A ")
-    return {"message": "Log sent to clients"}
-
-@app.get("/api/state")
-async def state():
-    global last_state_snapshot
-
-    if State.PLAYING in process_dict:
-        result = {"state": State.PLAYING.value, "now_playing": current_video_dict}
-    elif State.INTERLUDE in process_dict:
-        result = {"state": State.INTERLUDE.value}
-    else:
-        result = {"state": State.IDLE.value}
-
-    with state_lock:
-        if result != last_state_snapshot:
-            write_log_to_client(f"STATE_CHANGED={result}")
-            last_state_snapshot = result.copy()  
-
+def get_playing_state(rtmp_stream_url):
+    value = Video.INTERLUDE
+    now_playing = None
+    process_dict_mutex.acquire()
+    if Video.PLAYING in process_dict[rtmp_stream_url]:
+        value = Video.PLAYING
+        now_playing = process_dict[rtmp_stream_url][value]
+    process_dict_mutex.release()
+    result = {"state": value.name}
+    if now_playing:
+        result["now_playing"] = now_playing.as_json_object()
     return result
 
 
-@app.post("/file/play")
-async def play_file(request: Request):
-    data = await request.json()
-    file_path = data.get('path')
-    title = data.get('title')
-    thumbnail = data.get('thumbnail')
-    loop = data.get('loop')
+def kill_child_processes(parent_pid, sig=signal.SIGKILL):
     try:
-        # Check if playing cache or a disk directory/file
-        if file_path == "cache":
-            enqueue_all_cached()
-            return {"detail": "Success"}
-
-        if file_path is None:
-            file_path = args.videopath
-        if os.path.isdir(file_path):
-            # Recursively traverse directory using os.walk and play video files
-            def play_directory_thread(dir_path):
-                for root, directories, files in os.walk(dir_path):
-                    for file in sorted(files):
-                        if file.lower().endswith(('.mp4', '.mkv', '.avi', '.mov')):
-                            full_path = os.path.join(root, file)
-                            
-                            current_video_dict["title"] = file
-                            current_video_dict["thumbnail"] = thumbnail or ""
-                            
-                            config = VideoConfig(
-                                title=file,
-                                thumbnail=thumbnail or "",
-                            )
-                            response = create_ffmpeg_stream(
-                                full_path,
-                                State.PLAYING,
-                                config
-                            )
-                            # If the video ended on its own (return non-zero), break out
-                            if response != 0:
-                                return
-
-                            # there's some sort of delay on node media server
-                            # if you immediately play the next file sometimes it
-                            # fails, so this magic wait prevents a failure
-                            time.sleep(5)
-
-            threading.Thread(target=play_directory_thread, args=(file_path,)).start()
-            
-        else:
-            # Play a single file
-            threading.Thread(
-                target=create_ffmpeg_stream,
-                args=(
-                    file_path,
-                    State.PLAYING,
-                    VideoConfig(
-                        loop=False,
-                        title=title,
-                        thumbnail=thumbnail,
-                    )
-                ),
-            ).start()
-
-        return {"detail": "Success"}
-
-    except Exception as e:
-        logger.exception(e)
-        raise HTTPException(status_code=500, detail="check logs")
+        parent = psutil.Process(parent_pid)
+    except psutil.NoSuchProcess:
+        return
+    children = parent.children(recursive=True)
+    for process in children:
+        process.send_signal(sig)
 
 
-@app.post("/play")
-async def play(url: str, loop: bool = False, repeat: bool = False, resolution: int = 360):
-    # Stop all videos when pressing play, this also breaks out of video loops
-    stop_all_videos()
-    cancel_event.clear()
+def start_vlc_process(
+    video_id,
+    rtmp_stream_url,
+    video_type,
+    start_offset_seconds=None,
+    loop=False,
+    url=None,
+    title=None,
+    thumbnail=None,
+):
+    if not video_id:
+        logger.error(f'start_vlc_process was sent bad value for video_id: "{video_id}"')
+        return None
+    maybe_loop = ""
+    maybe_start_offset = ""
 
-    # Decode URL
-    url = unquote(url)
-    write_log_to_client("PROCESSING REQUEST for " + url)
+    if loop:
+        maybe_loop += " -stream_loop -1"
+    if start_offset_seconds != None:
+        maybe_start_offset = f" -ss {start_offset_seconds}"
 
-    # Repeat Cache Mode
-    if repeat:
-        write_log_to_client("Repeat Mode Activated")
-        asyncio.create_task(repeat_mode())
-        return {"detail": "Success"}
-
-    # Get the type of URL (VIDEO, PLAYLIST, UNKNOWN)
-    url_type = _get_url_type(url)
-    logger.info(f"{url} is a {url_type}")
-    if url_type == UrlType.UNKNOWN:
-        raise HTTPException(status_code=400, detail="Unknown URL")
-    elif url_type == UrlType.EMPTY:
-        return Response(status_code=204)
-    # get aspect ratio from best available video-only stream
-    in_w = None
-    in_h = None
-    title = None
-    thumbnail = None
-    # Only single videos resolve to a YouTube object here; playlists are
-    # expanded into individual videos later in the pipeline.
-    if url_type == UrlType.VIDEO:
-        try:
-            video = YouTube(url)
-            title = video.title
-            thumbnail = video.thumbnail_url
-        except Exception as e:
-            write_log_to_client(f"Failed to load YouTube video: {e}")
-            return {"detail": "Failed"}
-        try:
-            # choose the highest resolution video stream
-            best = video.streams.filter(only_video=True).order_by("resolution").desc().first()
-            if best and best.resolution and best.resolution.endswith("p"):
-                # best.resolution is a str ending in "p" e.g. '2160p' (or
-                # '1080p', '720p', etc.) basically the height in pixels plus a "p"
-                in_h = int(best.resolution[:-1])
-                # fall back to 16:9 if unknown
-                in_w = int(round(in_h * (16 / 9)))
-        except Exception:
-            pass
-
-    actual_size = None
-    if in_w and in_h and resolution:
-        out = _compute_scaled_size(in_w, in_h, int(resolution))
-        if out:
-            actual_size = {"width": out[0], "height": out[1]}
-
-    # Config for generic url type (VIDEO, PLAYLIST)
-    config = VideoConfig(
-        url_type=url_type,
+    COMMAND = f"ffmpeg {maybe_start_offset} -re {maybe_loop} -i {video_id} -c:v libx264 -preset veryfast -tune zerolatency -c:a aac -ar 44100 -f flv {rtmp_stream_url} > /dev/null"
+    process = subprocess.Popen(
+        COMMAND,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        shell=True,
+    )
+    MetricsHandler.ffmpeg_streams_created.labels(stream_name=rtmp_stream_url).inc()
+    process_dict_mutex.acquire()
+    logger.info(f"playing {video_id} on process {process.pid} for stream {rtmp_stream_url}")
+    process_dict[rtmp_stream_url][video_type] = youtube_helpers.VideoMetadata(
+        process.pid,
+        video_id,
         url=url,
-        loop=loop,
         title=title,
         thumbnail=thumbnail,
-        play_interlude_after=True,
-        repeat=repeat,
-        requested_height=int(resolution),
-        actual_size=actual_size,
+    )
+    process_dict_mutex.release()
+    with MetricsHandler.playing_time_seconds.labels(video_type=video_type.value, stream_name=rtmp_stream_url).time():
+        exit_code = process.wait()
+    logger.info(f"process {process.pid} exited with code {exit_code}")
+    MetricsHandler.ffmpeg_exit_codes.labels(exit_code=exit_code, stream_name=rtmp_stream_url).inc()
+    return exit_code
+
+
+def play_interlude(interlude_file_path, rtmp_stream_url):
+    while 1:
+        logger.info("interlude is waiting for mutex...")
+        interlude_mutex[rtmp_stream_url].acquire()
+        logger.info(f"running interlude thing for stream {rtmp_stream_url}")
+        start_vlc_process(interlude_file_path, rtmp_stream_url, Video.INTERLUDE, loop=True)
+
+
+def stop_video_by_type(video_type, rtmp_stream_url):
+    process_dict_mutex.acquire()
+    if video_type not in process_dict[rtmp_stream_url]:
+        process_dict_mutex.release()
+        logger.error(f"attempted to stop {video_type}, not found in process dict")
+        return False
+    logger.info(f"stopping video with type {video_type}")
+    current_playing_video = process_dict[rtmp_stream_url][video_type]
+    kill_child_processes(current_playing_video.pid)
+    process_dict[rtmp_stream_url].pop(video_type)
+    process_dict_mutex.release()
+    return True
+
+
+def stop_all_videos(rtmp_stream_url):
+    stop_video_by_type(Video.INTERLUDE, rtmp_stream_url)
+    stop_video_by_type(Video.PLAYING, rtmp_stream_url)
+
+
+def play_video(
+    video_id,
+    rtmp_stream_url,
+    start_offset_seconds=None,
+    loop=False,
+    play_interlude_after=True,
+    url=None,
+    title=None,
+    thumbnail=None,
+):
+    # before we play a specified video, stop any existing media to avoid collisions
+    stop_all_videos(rtmp_stream_url)
+    return_code = None
+    if start_offset_seconds and loop:
+        # if a start offset and loop was specified, the first iteration of the video
+        # is played at the specified offset. after, a new process is created which loops
+        # the video in its entirety. the reason why we don't spin up a process combining
+        # both looping and an offset is cause the ffmpeg process becomes a zombie when we
+        # try to stop it
+        start_vlc_process(
+            video_id,
+            rtmp_stream_url,
+            Video.PLAYING,
+            start_offset_seconds,
+            loop=False,
+            url=url,
+            title=title,
+            thumbnail=thumbnail,
+        )
+        return_code = start_vlc_process(
+            video_id,
+            rtmp_stream_url,
+            Video.PLAYING,
+            None,
+            loop,
+            url=url,
+            title=title,
+            thumbnail=thumbnail,
+        )
+    else:
+        return_code = start_vlc_process(
+            video_id,
+            rtmp_stream_url,
+            Video.PLAYING,
+            start_offset_seconds,
+            loop,
+            url=url,
+            title=title,
+            thumbnail=thumbnail,
+        )
+    if return_code == 0:
+        stop_video_by_type(Video.PLAYING, rtmp_stream_url)
+        if play_interlude_after:
+            logger.info("releasing interlude mutex...")
+            interlude_mutex[rtmp_stream_url].release()
+    return return_code
+
+
+def download_and_play_video(
+    video_url, rtmp_stream_url, start_offset_seconds=None, loop=False, play_interlude_after=True
+):
+    cached_path = cache.find(video_url)
+    if not cached_path:
+        # if we didn't find the url, add it to the cache,
+        # that way if the playlist loops we'll have it ready
+        # on the next time around
+        cached_path = cache.add(video_url)
+        if not cached_path:
+            logger.warning(f"not playing {video_url} for stream {rtmp_stream_url}")
+            return
+        logger.info(
+            f"attempted to cache url {video_url}, should live at path {cached_path.file_path} "
+        )
+
+    return play_video(
+        cached_path.file_path,
+        rtmp_stream_url,
+        start_offset_seconds,
+        loop,
+        play_interlude_after=play_interlude_after,
+        url=video_url,
+        title=cached_path.title,
+        thumbnail=cached_path.thumbnail,
     )
 
-    # Build the playlist before download for accurate cache checking
-    if url_type == UrlType.PLAYLIST:
+
+def handle_youtube_playlist(videos_in_playlist, rtmp_stream_url, loop=False):
+    def download_next_video_in_list(playlist, current_index):
+        next_index = current_index + 1
+        if next_index < len(playlist):
+            video_url = playlist[next_index]
+            if not cache.find(video_url):
+                cache.add(video_url)
+
+    [current_playlist[rtmp_stream_url].put(video_url) for video_url in videos_in_playlist]
+    queue_as_list = current_playlist[rtmp_stream_url].queue
+    while 1:
+        for i in range(len(queue_as_list)):
+            video_url = queue_as_list[i]
+            exit_code = None
+
+            t = threading.Thread(
+                target=download_next_video_in_list, args=(queue_as_list, i), daemon=True
+            )
+            t.start()
+
+            exit_code = download_and_play_video(video_url, rtmp_stream_url, play_interlude_after=False)
+            # if the exit code is None then the vlc process never even ran.
+            if exit_code not in [0, None]:
+                # exit the entire thread routine if the video we just played was killed
+                logger.info(f"playlist routine recieved code {exit_code}, exiting")
+                return
+        if loop:
+            continue
+        break
+
+    logger.info("out of playlist videos")
+    interlude_mutex[rtmp_stream_url].release()
+
+
+def handle_play_cache(rtmp_stream_url):
+    # assume we want to loop over cache
+    while 1:
+        cache_entries = cache.list_entries()
+        for entry in cache_entries:
+            # there is a possibility that the cache video could get deleted
+            # while playing. this if statement doesnt cover us in that case
+            if entry.get("id") in cache.mapping:
+                exit_code = play_video(
+                    entry.get("path"),
+                    rtmp_stream_url,
+                    title=entry.get("name"),
+                    thumbnail=entry.get("thumbnail")
+                )
+                if exit_code not in [0, None]:
+                    # exit the entire thread routine if the video we just played was killed
+                    logger.info(f"cache routine recieved code {exit_code}, exiting")
+                    return
+
+
+def handle_disk_playlist(path: pathlib.Path, rtmp_stream_url, loop=False):
+    [current_playlist[rtmp_stream_url].put(video_url) for video_url in path.iterdir()]
+    # cache the first file's thumbnail
+    logger.error(f"current_playlist[rtmp_stream_url].qsize() = {current_playlist[rtmp_stream_url].qsize()}")
+    if current_playlist[rtmp_stream_url].qsize():
+        first_path = current_playlist[rtmp_stream_url].queue[0].resolve()
+        logger.error(f"first_path = {(first_path, str(first_path))}")
+    while 1:
+        queue_as_list = current_playlist[rtmp_stream_url].queue
+        for i in range(len(queue_as_list)):
+            resolved = queue_as_list[i].resolve()
+            logger.error(f"resolved was {resolved}")
+            maybe_thumbnail = None
+
+            exit_code = play_video(
+                resolved,
+                rtmp_stream_url,
+                # start_offset_seconds:
+                None,
+                # loop:
+                False,
+                # play_interlude_after:
+                True,
+                # url:
+                None,
+                # title:
+                None,
+                # thumbnail:
+                maybe_thumbnail,
+            )
+            # if the exit code is None then the vlc process never even ran.
+            if exit_code not in [0, None]:
+                # exit the entire thread routine if the video we just played was killed
+                logger.info(f"playlist routine recieved code {exit_code}, exiting")
+                return
+            time.sleep(10)
+        if loop:
+            continue
+        break
+
+
+def clear_playlist(rtmp_stream_url):
+    logger.info("emptying queue...")
+    while not current_playlist[rtmp_stream_url].empty():
         try:
-            playlist_for_cache_check = Playlist(config.url)
-
-            write_log_to_client(
-                f"Playlist detected with {len(playlist_for_cache_check)} videos"
-            )
-        except Exception as e:
-            write_log_to_client(
-                f"Error building playlist cache check: {e}"
-            )
-
-            playlist_for_cache_check = None
-
-    # Submit video config to pipeline
-    try:
-        # Add URL's video config to queue
-        download_url_types(config)
-
-        write_log_to_client("Playlist queued successfully")
-    
-    except Exception as e:
-        write_log_to_client(
-            f"Failed to queue playlist: {e}"
-        )
-        raise
-
-        # Update Metrics
-        MetricsHandler.video_count.inc()
-
-        # Post cache status
-        # For playlists, "in cache" is defined as the entire playlist being in the cache
-        if url_type == UrlType.PLAYLIST:
-            if playlist_for_cache_check is None:
-                in_cache = False
-            else:
-                in_cache = True
-                # Check if every video in the playlist is cached
-                for video_url in playlist_for_cache_check:
-                    video_path = video_cache.find(video_url))                    if video_path is None:
-                        in_cache = False
-                        break
-        elif url_type == UrlType.VIDEO:
-            cached_video_path = video_cache.find(url))            in_cache = cached_video_path is not None
-        return {"detail": "Success", "in_cache": in_cache}
-
-    # If download is unsuccessful, give response and reason
-    except pytubefix.exceptions.AgeRestrictedError:
-        raise HTTPException(status_code=400, detail="This video is age restricted :(")
-    except pytubefix.exceptions.RegexMatchError:
-        raise HTTPException(
-            status_code=400, detail="That's not a YouTube link buddy ..."
-        )
-    except pytubefix.exceptions.VideoUnavailable:
-        raise HTTPException(status_code=404, detail="This video is unavailable :(")
-    except Exception:
-        logger.exception('unable to play video from url')
-        raise HTTPException(status_code=500, detail="check logs")
-
-
-@app.post("/api/cache/delete")
-async def delete_file(request: Request):
-    data = await request.json()
-    try:
-        video_cache.delete(data['id'])
-        return {"detail": "Success"}
-    except Exception:
-        logger.exception('unable to delete file from cache')
-        raise HTTPException(status_code=500, detail="check logs")
-
-
-@app.get("/metadata")
-def metadata(url: str):
-    url = unquote(url)
-    try:
-        url_type = _get_url_type(url)
-        if url_type == UrlType.UNKNOWN:
-            logger.error(f"unable to determine url type from {url}")
-            raise HTTPException(status_code=400, detail="given url is of unknown type")
-
-        # Check if the given url is a valid video or playlist
-        if url_type == UrlType.PLAYLIST:
-            playlist = Playlist(url)
-            first_video = playlist.videos[0]
-            return {"title": playlist.title, "thumbnail": first_video.thumbnail_url}
-
-        # if url_type == UrlType.VIDEO:
-        video = YouTube(url)
-        return {"title": video.title, "thumbnail": video.thumbnail_url}
-    # If pytubefix is unable to fetch video metadata, give response and reason
-    except pytubefix.exceptions.AgeRestrictedError:
-        raise HTTPException(status_code=400, detail="This video is age restricted :(")
-    except pytubefix.exceptions.RegexMatchError:
-        raise HTTPException(
-            status_code=400, detail="That's not a YouTube link buddy ..."
-        )
-    except pytubefix.exceptions.VideoUnavailable:
-        raise HTTPException(status_code=404, detail="This video is unavailable :(")
-    except Exception:
-        logger.exception(f"unable to get metadata for url {url}")
-        raise HTTPException(status_code=500, detail="Check logs")
-
-
-@app.post("/api/stop")
-async def stop():
-    cancel_event.set()
-    current_video_dict.clear()
-    clear_queue(play_video_queue)
-    # Check if there is a video playing to stop
-    if State.PLAYING in process_dict:
-        # Stop the video playing subprocess
-        stop_video_by_type(State.PLAYING)
+            current_playlist[rtmp_stream_url].get(block=False)
+        except:
+            continue
+    logger.info("done emptying queue")
 
 
 @app.get("/file/list")
-async def getVideos(path: str = None):
-    if path == "cache":
-        returnedResponse = []
-        for key, value in video_cache.video_id_to_path.items():
-            returnedResponse.append(
-                {
-                    "id": key,
-                    "name": value.title,
-                    "path": value.file_path,
-                    "thumbnail": value.thumbnail,
-                    "is_directory": False,
-                }
-            )
-        return returnedResponse
-    
-    # If no path is provided, default to the disk base video path
-    target_path = path if path else args.videopath
-    
-    if not os.path.exists(target_path):
-        return json.dumps([])
+async def play(path: typing.Optional[str] = None):
+    if path is None:
+        path = args.download_file_location
+    if str(path).lower() == 'cache':
+        return {
+            "result": {
+                "content": cache.list_entries(),
+                "parent": None,
+            }
+        }
 
-    returnedResponse = []
-    for entry in os.scandir(target_path):
-        if entry.is_dir():
-            returnedResponse.append(
-                {
-                    "id": entry.name,
-                    "name": entry.name,
-                    "path": entry.path,
-                    "thumbnail": "", # Optional folder thumbnail or icon
-                    "is_directory": True,
-                }
-            )
-        elif entry.is_file() and entry.name.lower().endswith(('.mp4', '.mkv', '.avi', '.mov')):
-            returnedResponse.append(
-                {
-                    "id": entry.name,
-                    "name": entry.name,
-                    "path": entry.path,
-                    "thumbnail": "",
-                    "is_directory": False,
-                }
-            )
-            
-    return returnedResponse
+    p = pathlib.Path(path)
+    required = pathlib.Path(args.download_file_location)
+    resolved = p.resolve()
+    path_valid = required in list(resolved.parents) or resolved == required
+    logger.info(str({
+                'path_valid': path_valid,
+                'req': required,
+                'resolved': resolved,
+    }))
+    if path_valid:
+        result = []
+        parent = resolved.parents[0]
+        if resolved == required:
+            parent = None
 
+        for path in resolved.iterdir():
+            result.append(
+                {
+                    "name": path.name,
+                    "is_directory": path.is_dir(),
+                    "path": path,
+                }
+            )
+        return {
+            "result": {
+                "content": result,
+                "parent": parent,
+            },
+        }
+    raise HTTPException(
+        status_code=400, detail=f"path {resolved} must be within {required}"
+    )
+
+
+@app.post("/play/file")
+async def play_file(request: Request):
+    data = await request.json()
+    if "path" not in data:
+        raise HTTPException(
+            status_code=400, detail="path field must be set in JSON request"
+        )
+    validate_stream_name(data)
+
+    rtmp_stream_url = args.rtmp_stream_url or os.path.join(args.rtmp_base_url, data.get("stream"))
+    required = pathlib.Path(args.download_file_location)
+    p = pathlib.Path(data["path"])
+    resolved = p.resolve()
+    # what if its `/valid/path/thing; rm -rf /`?
+    path_valid = required in list(resolved.parents)
+    play_cache = data["path"] == "cache"
+    if not path_valid and not play_cache:
+        raise HTTPException(
+            status_code=400, detail=f"path {resolved} must be within {required}"
+        )
+
+    clear_playlist(rtmp_stream_url)
+    if play_cache:
+        t = threading.Thread(
+            target=handle_play_cache,
+            args=(
+                rtmp_stream_url,
+            ),
+            daemon=True,
+        )
+        t.start()
+    elif resolved.is_file():
+        # todo make handle_disk_playlist be one function that
+        # a single file and multiple file request go to
+        # accepts an array of files as param, handles thumbnail logic
+        # within itself
+        maybe_thumbnail = data.get("thumbnail")
+        maybe_title = data.get("name")
+        t = threading.Thread(
+            target=play_video,
+            args=(
+                # escape any spaces
+                str(resolved).replace(" ", "\ "),
+                rtmp_stream_url,
+                # start_offset_seconds:
+                None,
+                # loop:
+                False,
+                # play_interlude_after:
+                True,
+                # url:
+                None,
+                # title:
+                maybe_title,
+                # thumbnail:
+                maybe_thumbnail,
+            ),
+            daemon=True,
+        )
+        t.start()
+    elif resolved.is_dir():
+        # loop over cache if the user asked to play all videos in the cache
+        t = threading.Thread(
+            target=handle_disk_playlist,
+            args=(
+                # escape any spaces
+                pathlib.Path(str(resolved).replace(" ", "\ ")),
+                rtmp_stream_url,
+                bool(data.get("loop")),
+            ),
+            daemon=True,
+        )
+        t.start()
+    return {"message": "we're playing what you sent, check logs"}
+
+
+@app.post("/play")
+async def play(request: Request):
+    data = await request.json()
+    if "url" not in data:
+        raise HTTPException(
+            status_code=400, detail="url field must be set in JSON request"
+        )
+    validate_stream_name(data)
+
+    rtmp_stream_url = args.rtmp_stream_url or os.path.join(args.rtmp_base_url, data.get("stream"))
+    url_type = youtube_helpers.determine_url_type(data["url"])
+    MetricsHandler.urls_recieved.labels(url_type=url_type.value, stream_name=rtmp_stream_url).inc()
+    if url_type == UrlType.UNKNOWN:
+        raise HTTPException(status_code=400, detail="given url is of unknown type")
+    
+
+    clear_playlist(rtmp_stream_url)
+    if url_type == UrlType.VIDEO:
+        t = threading.Thread(
+            target=download_and_play_video,
+            args=(
+                data["url"],
+                rtmp_stream_url,
+                data.get("startOffsetSeconds"),
+                bool(data.get("loop")),
+            ),
+            daemon=True,
+        )
+        t.start()
+    elif url_type == UrlType.PLAYLIST:
+        t = threading.Thread(
+            target=handle_youtube_playlist,
+            args=(
+                youtube_helpers.get_playlist_videos(data["url"]),
+                rtmp_stream_url,
+                bool(data.get("loop")),
+            ),
+            daemon=True,
+        )
+        t.start()
+
+    return {"message": "we're downloading what you sent, check logs"}
+
+
+@app.get("/video/title")
+async def play(video: typing.Optional[str] = None):
+    decoded_video = unquote(video)
+    if not video:
+        raise HTTPException(
+            status_code=400, detail="video field must be set in request"
+        )
+    maybe_entry = cache.find(decoded_video)
+    result = None
+    if maybe_entry:
+        result = maybe_entry.title
+    else:
+        result = youtube_helpers.get_video_title(decoded_video)
+    return {"result": result}
+
+
+@app.get("/video/thumbnail")
+async def play(video: typing.Optional[str] = None):
+    decoded_video = unquote(video)
+    if not video:
+        raise HTTPException(
+            status_code=400, detail="video field must be set in request"
+        )
+    maybe_entry = cache.find(decoded_video)
+    result = None
+    if maybe_entry:
+        result = maybe_entry.thumbnail
+    else:
+        result = youtube_helpers.get_video_thumbnail(decoded_video)
+    return {"result": result}
+
+
+@app.get("/video/durationSeconds")
+async def play(video: typing.Optional[str] = None):
+    decoded_video = unquote(video)
+    if not video:
+        raise HTTPException(
+            status_code=400, detail="video field must be set in request"
+        )
+    # todo validate start seconds
+    # todo add end seconds
+    # todo validate end seconds
+    logger.info(f"attempting to calculate duration for {decoded_video}")
+    return {"result": youtube_helpers.get_length_of_video_seconds(decoded_video)}
+
+@app.post("/cache/delete")
+async def delete(request: Request):
+    data = await request.json()
+    if "videoId" not in data:
+        raise HTTPException(
+            status_code=400, detail="videoId field must be set in JSON request"
+        )
+    return {"result": cache.delete(data["videoId"])}
+
+
+@app.post("/stop")
+async def stop(request: Request):
+    data = await request.json()
+    validate_stream_name(data)
+    rtmp_stream_url = args.rtmp_stream_url or os.path.join(args.rtmp_base_url, data.get("stream"))
+    clear_playlist(rtmp_stream_url)
+    video_stopped = stop_video_by_type(Video.PLAYING, rtmp_stream_url)
+    if video_stopped:
+        interlude_mutex[rtmp_stream_url].release()
+    return {"success": video_stopped}
+
+
+@app.get("/state")
+async def play(stream: typing.Optional[str] = None):
+    validate_stream_name({"stream": stream})
+    rtmp_stream_url = args.rtmp_stream_url or os.path.join(args.rtmp_base_url, stream)
+    return get_playing_state(rtmp_stream_url)
 
 @app.get("/metrics")
 def get_metrics():
@@ -818,48 +598,28 @@ def get_metrics():
     )
 
 
-@app.get("/view")
-def get_cache(path: str = None):
-    # If no path parameter is present, redirect to default ?path=cache
-    if path == args.videopath:
-        return RedirectResponse(url="/view", status_code=303)
-    
-    # Otherwise, serve the HTML page
-    return FileResponse("static/cache.html")
-
-
 @app.get("/debug")
-def debug():
-    return {
-        "state": {
-            "process_dict": process_dict,
-            "current_video_dict": current_video_dict,
-        },
-        "cache": vars(video_cache),
-    }
-
-
-# Start worker threads on startup
-@app.on_event("startup")
-def startup():
-    threading.Thread(target=download_video_worker, daemon=True).start()
-    threading.Thread(target=play_video_worker, daemon=True).start()
+async def debug(request: Request):
+    result = {}
+    result["state"] = process_dict
+    result["cache"] = vars(cache)
+    return result
 
 
 @app.on_event("shutdown")
 def signal_handler():
-    stop_all_videos()
-
-    # if the cache file is specfied, write the cache to the file and not clear the downloaded videos
-    if args.cache_state_file:
-        video_cache.write_cache()
-
-    # if the cache file isn't specified, clear all uncache videos
-    else:
-        video_cache.clear()
+    logger.info("stopping all videos and clearing cache")
+    for name in args.rtmp_stream_names:
+        stream_name = os.path.join(args.rtmp_base_url, name)
+        stop_all_videos(stream_name)
+    if args.rtmp_stream_url:
+        stop_all_videos(args.rtmp_stream_url)
+    cache.clear()
+    logger.info("shutting down")
 
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
+
 
 # we have a separate __name__ check here due to how FastAPI starts
 # a server. the file is first ran (where __name__ == "__main__")
@@ -868,22 +628,31 @@ app.mount("/", StaticFiles(directory="static", html=True), name="static")
 # is so a thread starts up the interlude after the server is ready to go
 if __name__ == "server":
     MetricsHandler.init()
-    MetricsHandler.cache_size.set(0)
-    MetricsHandler.cache_size_bytes.set(0)
+    cache.populate()
     
-    # Start up interlude by default
-    if args.interlude:
-        threading.Thread(target=handle_interlude).start()
-    # Ensure video folder exists
-    if not os.path.exists(args.videopath):
-        os.makedirs(args.videopath)
-
-    # if the cache file is specified, populate the cache from the file
-    if args.cache_state_file:
-        video_cache.populate()
+    # Start up interlude by default    
+    if args.interlude_file_path:
+        if args.rtmp_stream_url:
+            threading.Thread(target=play_interlude, args=(args.interlude_file_path,args.rtmp_stream_url)).start()
+        else:
+            for name in args.rtmp_stream_names:
+                stream_name = os.path.join(args.rtmp_base_url, name)
+                threading.Thread(target=play_interlude, args=(args.interlude_file_path,stream_name)).start()
 
 
 if __name__ == "__main__":
+    if not args.rtmp_stream_url:
+        if not args.rtmp_base_url or not args.rtmp_stream_names:
+            logger.error("""
+                --rtmp-stream-url must be specified, or --rtmp-base-url
+                and --rtmp-stream-names must be specified
+            """)
+            sys.exit(1)
+
+    log_config = uvicorn.config.LOGGING_CONFIG
+    log_config["loggers"]["uvicorn.access"]["level"] = "WARNING"
+    log_config["loggers"]["uvicorn.error"]["level"] = "WARNING"
+
     uvicorn.run(
         "server:app",
         host=args.host,

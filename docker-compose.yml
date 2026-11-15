@@ -14,10 +14,11 @@ services:
       dockerfile: ./Dockerfile
     restart: 'on-failure'
     command:
-      - --interlude=/tmp/videos/interlude.mp4
-      - --videopath=/tmp/videos
-      - --rtmp-stream-url=rtmp://nms:1935/live/mystream
+      - --interlude-file-path=/tmp/videos/interlude.mp4
+      - --download-file-location=/tmp/videos
+      - --rtmp-stream-url=rtmp://nms/live/mystream
       - --cache-state-file=/tmp/videos/state.json
+      - --port=5001
     volumes:
       - ./server.py:/app/server.py
       - ./static/:/app/static/

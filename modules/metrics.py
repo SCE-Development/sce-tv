@@ -1,83 +1,100 @@
 import enum
-
 import prometheus_client
 
 
 class Metrics(enum.Enum):
-    VIDEO_COUNT = (
-        "video_count",
-        "Number of videos played",
+    # name, desc, type, labelnames=()
+    # above default value referenced from the metrics constructor
+    # in the prometheus_client library, see
+    # https://github.com/prometheus/client_python/blob/fd4da6cde36a1c278070cf18b4b9f72956774b05/prometheus_client/metrics.py#L115
+    FFMPEG_STREAMS_CREATED = (
+        "ffmpeg_streams_created",
+        "total number of ffmpeg streams created",
         prometheus_client.Counter,
+        ["stream_name"],
+    )
+    FFMPEG_EXIT_CODES = (
+        "ffmpeg_exit_codes",
+        "exit codes returned by ffmpeg when streaming videos to node media server",
+        prometheus_client.Counter,
+        ["exit_code", "stream_name"],
     )
 
-    STREAMS_COUNT = (
-        "streams_count",
-        "Number of streams created",
-        prometheus_client.Counter,
-        ["video_type"],  # playing, interlude
+    PLAYING_TIME_SECONDS = (
+        "playing_time_seconds",
+        "total time playing videos in seconds",
+        prometheus_client.Summary,
+        ["video_type", "stream_name"],
     )
-
-    SUBPROCESS_COUNT = (
-        "subprocess_count",
-        "Number of subprocesses ended",
-        prometheus_client.Counter,
-        ["exit_code"],  # 0, 137, 1 etc
-    )
-
-    DOWNLOAD_TIME = (
-        "download_time",
-        "Total time spent downloading videos in seconds",
+    DOWNLOAD_TIME_SECONDS = (
+        "download_time_seconds",
+        "total time spent downloading videos in seconds",
         prometheus_client.Summary,
     )
 
-    DATA_DOWNLOADED = (
-        "data_downloaded",
-        "Total video data downloaded in bytes",
+    BYTES_DOWNLOADED = (
+        "bytes_downloaded",
+        "total bytes downloaded from YouTube",
         prometheus_client.Counter,
     )
-
-    VIDEO_DOWNLOAD_COUNT = (
-        "video_download_count",
-        "Number of videos downloaded",
+    VIDEOS_DOWNLOADED = (
+        "videos_downloaded",
+        "total number of videos downloaded from YouTube",
         prometheus_client.Counter,
     )
+    DOWNLOADS_FAILED = (
+        "downloads_failed",
+        "total number of failed downloads from YoutTube",
+        prometheus_client.Counter,
+    )
+    FILES_DELETED = (
+        "files_deleted",
+        "total number of files deleted from disk",
+        prometheus_client.Counter,
+        ["type"],
+    )
 
-    CACHE_SIZE = (
-        "cache_size",
-        "Total entries in cache",
+    CACHE_ENTRIES = (
+        "cache_entries",
+        "number of entries in cache",
         prometheus_client.Gauge,
     )
-
     CACHE_SIZE_BYTES = (
         "cache_size_bytes",
-        "Current cache size in bytes",
+        "total bytes of files pointed to by cache",
         prometheus_client.Gauge,
     )
-
-    CACHE_HIT_COUNT = (
-        "cache_hit_count",
-        "Number of successful cache retrievals",
+    CACHE_HITS = (
+        "cache_hits",
+        "number of cache hits",
         prometheus_client.Counter,
     )
-
-    CACHE_MISS_COUNT = (
-        "cache_miss_count",
-        "Number of failed cache retrievals",
+    CACHE_MISSES = (
+        "cache_misses",
+        "number of cache misses",
         prometheus_client.Counter,
     )
-
-    HTTP_REQUEST_COUNT = (
-        "http_request_count",
-        "Number of requests received for each endpoint",
-        prometheus_client.Counter,
-        ["endpoint"],
-    )
-
-    STREAM_STATE = (
-        "stream_state",
-        "Indicates whether the given stream type is running (1=running, 0=stopped)",
+    THUMBNAIL_CACHE_ENTRIES = (
+        "thumbnail_cache_entries",
+        "number of entries in thumbnail cache",
         prometheus_client.Gauge,
-        ["video_type"],
+    )
+    THUMBNAIL_CACHE_HITS = (
+        "thumbnail_cache_hits",
+        "number of thumbnail cache hits",
+        prometheus_client.Counter,
+    )
+    THUMBNAIL_CACHE_MISSES = (
+        "thumbnail_cache_misses",
+        "number of thumbnail cache misses",
+        prometheus_client.Counter,
+    )
+
+    VIDEOS_RECIEVED = (
+        "urls_recieved",
+        "number of urls asked to play from the frontend",
+        prometheus_client.Counter,
+        ["url_type", "stream_name"],
     )
 
     def __init__(self, title, description, prometheus_type, labels=()):

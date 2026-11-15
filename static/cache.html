@@ -33,14 +33,17 @@
     <button id="play-dir-btn">play entire directory</button>
     <div id="country"></div>
     <script>
-        const stream = window.location.host.split('.')[0];
         let parent = null;
 
         const urlSearchParams = new URLSearchParams(window.location.search);
+        const stream = (
+            urlSearchParams.get('stream') ||
+            window.location.host.split('.')[0]
+        );
         const params = Object.fromEntries(urlSearchParams.entries());
 
         function playVideo(path, loop=false, name=null, thumbnail=null) {
-            const url = new URL('file/play', window.location.href);
+            const url = new URL('play/file', window.location.href);
             fetch(url.href, {
                 method: 'POST',
                 body: JSON.stringify({
@@ -122,11 +125,10 @@
 
         fetch(`file/list${params.path ? '?path=' + params.path : ''}`)
             .then(x => x.json())
-            .then((result) => {
+            .then(({result}) => {
                 const urlParams = new URLSearchParams(window.location.search);
                 const path = urlParams.get('path') || '';
                 const slashCount = (path.match(/\//g) || []).length;
-                console.log({path, slashCount})
                 const parentButton = document.getElementById('back-btn');
                 if (slashCount) {
                     const parent = path.substring(0, path.lastIndexOf('/'));
@@ -137,7 +139,7 @@
                 }
                 let output = '';
                 document.getElementById('path-title').textContent = params.path;
-                result.forEach(function (item) {
+                result.content.forEach(function (item) {
                     if (item.is_directory) {
                         const placeToGo = window.location.href.split('?')[0] + '?path=' + encodeURIComponent(item.path);
                         output += `
