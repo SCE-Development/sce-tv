@@ -406,3 +406,16 @@ document.getElementById('url').addEventListener('keydown', handleUrlChange);
 document.getElementById('get-video-seconds').addEventListener('click', handleVideoDuration);
 document.getElementById('loop-video').addEventListener('click', toggleVideoLoop);
 document.getElementById('start-offset-seconds').addEventListener('input', humanizeTimeSliderValue);
+
+document.addEventListener("DOMContentLoaded", () => {
+    // get current search query (e.g., "?stream=75")
+    const currentParams = window.location.search;
+
+    if (currentParams) {
+        // Find all links with the "preserve-params" class
+        document.querySelectorAll("a.preserve-params").forEach(link => {
+            // Append the query params to the existing href
+            link.href += currentParams;
+        });
+    }
+});

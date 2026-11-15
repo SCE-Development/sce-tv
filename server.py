@@ -367,11 +367,6 @@ async def play(path: typing.Optional[str] = None):
     required = pathlib.Path(args.download_file_location)
     resolved = p.resolve()
     path_valid = required in list(resolved.parents) or resolved == required
-    logger.info(str({
-                'path_valid': path_valid,
-                'req': required,
-                'resolved': resolved,
-    }))
     if path_valid:
         result = []
         parent = resolved.parents[0]

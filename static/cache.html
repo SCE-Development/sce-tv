@@ -70,21 +70,26 @@
         }
 
         function backToSceTv() {
-            let url = window.location.href;
-            window.location.href = window.location.href.substring(0, url.lastIndexOf('/'));
+            const url = new URL(window.location.href);
+            // Set the new path, one.sce/tv/cache becomes one.sce/tv
+            url.pathname = url.pathname.substring(
+                url.pathname.indexOf('/'),
+                url.pathname.lastIndexOf('/'),
+            );
+
+            window.location.href = url.toString();
         }
 
         function goToCachePage() {
-            const placeToGo = window.location.href.split('?')[0] + '?path=cache';
-            window.location.href = placeToGo;
+            const url = new URL(window.location.href);
+            url.searchParams.set('path', 'cache');
+            window.location.href = url.toString();
         }
 
         function goHome(path = '') {
-            if (path) {
-                window.location.href = window.location.href.split('?')[0] + '?path=' + path;
-                return;
-            }
-            window.location.href = window.location.href.split('?')[0];
+            const url = new URL(window.location.href);
+            url.searchParams.set('path', path);
+            window.location.href = url.toString();
         }
 
         function maybeRenderThumbnail(item={}) {
@@ -144,7 +149,7 @@
                         const placeToGo = window.location.href.split('?')[0] + '?path=' + encodeURIComponent(item.path);
                         output += `
                         <div class="entry">
-                            <a href=${placeToGo}>
+                            <a class="preserve-params" href=${placeToGo}>
                                 <p>${item.name}/</p>
                             </a>
                         </div>
@@ -209,6 +214,18 @@
         document.getElementById('home-btn').addEventListener('click', () => goHome());
         document.getElementById('scetv-btn').addEventListener('click', backToSceTv);
         document.getElementById('cache-btn').addEventListener('click', goToCachePage);
+        document.addEventListener("DOMContentLoaded", () => {
+            // get current search query (e.g., "?stream=75")
+            const currentParams = window.location.search;
+
+            if (currentParams) {
+                // Find all links with the "preserve-params" class
+                document.querySelectorAll("a.preserve-params").forEach(link => {
+                    // Append the query params to the existing href
+                    link.href += currentParams;
+                });
+            }
+        });
     </script>
 </body>
 
