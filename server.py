@@ -6,7 +6,6 @@ import threading
 from urllib.parse import unquote
 import uvicorn
 import signal
-import logging
 import ssl
 import time
 from pathlib import Path
@@ -28,18 +27,9 @@ import psutil
 
 from modules.args import get_args
 from modules.cache import Cache
+from modules.logger import logger
 from modules.metrics import MetricsHandler
 
-
-logging.Formatter.converter = time.gmtime
-logging.basicConfig(
-    # in mondo we trust
-    format="%(asctime)s.%(msecs)03dZ %(threadName)s %(levelname)s:%(name)s:%(message)s",
-    datefmt="%Y-%m-%dT%H:%M:%S",
-    level=logging.INFO,
-)
-logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
-logging.getLogger("uvicorn.error").setLevel(logging.WARNING)
 
 # Enum for the state of the video being processed
 class State(enum.Enum):
@@ -132,7 +122,7 @@ def create_ffmpeg_stream(
     config: VideoConfig
 ):
     if file_path is None:
-        logging.info("file_path is None. ffmpeg_stream cancelled.")
+        logger.info("file_path is None. ffmpeg_stream cancelled.")
         return 2
 
     if stop_all_processes():
@@ -186,7 +176,7 @@ def create_ffmpeg_stream(
     current_video_dict["thumbnail"] = config.thumbnail
     current_video_dict["file_path"] = file_path
 
-    logging.info(f"Process {process.pid} started for {video_type.value} video: {file_path}")
+    logger.info(f"Process {process.pid} started for {video_type.value} video: {file_path}")
     process_dict[video_type] = process.pid
     MetricsHandler.streams_count.labels(video_type=video_type.value).inc(amount=1)
     MetricsHandler.stream_state.labels(video_type=video_type.value).set(1)
@@ -196,7 +186,7 @@ def create_ffmpeg_stream(
     write_log_to_client(f"Process {process.pid} started for {video_type.value} video: {file_path}")
     exit_code = process.wait()
     write_log_to_client(f"Process {process.pid} exited with code {exit_code}")
-    logging.info(f"Process {process.pid} exited with code {exit_code}")
+    logger.info(f"Process {process.pid} exited with code {exit_code}")
   
 
     MetricsHandler.subprocess_count.labels(
@@ -209,7 +199,7 @@ def create_ffmpeg_stream(
 
     if (exit_code == 0 or video_type == State.PLAYING) and config.play_interlude_after and args.interlude:
         interlude_lock.release()
-    logging.info(f"Process {process.pid} exited with code {exit_code}")
+    logger.info(f"Process {process.pid} exited with code {exit_code}")
     write_log_to_client(f"Process {process.pid} exited with code {exit_code}")
 
     return exit_code
@@ -285,7 +275,7 @@ def download_video_worker():
             video_path = download_video(config)
             play_video_queue.put((config, video_path))
         except Exception as e:
-            logging.exception(f"download_video_worker failed on {config.url}")
+            logger.exception(f"download_video_worker failed on {config.url}")
             write_log_to_client(f"Failed to download {config.url}: {e}")
         finally:
             download_url_queue.task_done()
@@ -295,7 +285,7 @@ def download_video_worker():
 def download_video(config: VideoConfig):
     with download_lock:
         # Attempt to find video in cache
-        video_path = video_cache.find(Cache.get_video_id(config.url))
+        video_path = video_cache.find(config.url)
         # Download video if not in cache
         if video_path is None:
             # Check age restriction
@@ -315,7 +305,7 @@ def download_video(config: VideoConfig):
                 write_log_to_client(f"Failed to download {config.url}: {e}")
                 raise
             # Get video path of downloaded video and log
-            video_path = video_cache.find(Cache.get_video_id(config.url))
+            video_path = video_cache.find(config.url)
             if video_path is not None:
                 write_log_to_client(f"Downloaded {config.url} to {video_path}")
             else:
@@ -333,9 +323,9 @@ def play_video_worker():
                 time.sleep(1)
                 continue
             # Play Video
-            logging.info(f"Playing {video_path}")
+            logger.info(f"Playing {video_path}")
             exit_code = play_video(video_path, config)
-            logging.info(f"EXIT CODE: {exit_code}")
+            logger.info(f"EXIT CODE: {exit_code}")
         finally:
             play_video_queue.task_done()
 
@@ -354,7 +344,7 @@ def play_video(video_path: str, config: VideoConfig):
         )
         return exit_code
     except Exception as e:
-        logging.exception(f"Error playing video: {e}")
+        logger.exception(f"Error playing video: {e}")
         write_log_to_client(f"Error playing video: {e}")
         return 1
 
@@ -396,15 +386,15 @@ def _get_url_type(url: str):
         return UrlType.EMPTY
     try:
         playlist = pytubefix.Playlist(url)
-        logging.info(f"{url} is a playlist with {len(playlist)} videos")
+        logger.info(f"{url} is a playlist with {len(playlist)} videos")
         return UrlType.PLAYLIST
     except:
         try:
             pytubefix.YouTube(url)
-            logging.info(f"{url} is a video")
+            logger.info(f"{url} is a video")
             return UrlType.VIDEO
         except:
-            logging.error(f"url {url} is not a playlist or video!")
+            logger.error(f"url {url} is not a playlist or video!")
             return UrlType.UNKNOWN
 
 
@@ -430,7 +420,7 @@ def enqueue_all_cached():
             cache_video_config.repeat = False
             play_video_queue.put((cache_video_config, cached_video.file_path))
     except Exception as e:
-        logging.exception(f"Exception enqueuing all cached: {e}")
+        logger.exception(f"Exception enqueuing all cached: {e}")
 
 
 # Repeat Mode Easter Egg
@@ -445,7 +435,7 @@ async def repeat_mode():
                     enqueue_all_cached()
                 await asyncio.sleep(1)
         except Exception as e:
-            logging.exception(f"Exception activating repeat mode: {e}")
+            logger.exception(f"Exception activating repeat mode: {e}")
 
 
 # --- SSE Log Broadcasting Integration ---
@@ -584,7 +574,7 @@ async def play_file(request: Request):
         return {"detail": "Success"}
 
     except Exception as e:
-        logging.exception(e)
+        logger.exception(e)
         raise HTTPException(status_code=500, detail="check logs")
 
 
@@ -606,7 +596,7 @@ async def play(url: str, loop: bool = False, repeat: bool = False, resolution: i
 
     # Get the type of URL (VIDEO, PLAYLIST, UNKNOWN)
     url_type = _get_url_type(url)
-    logging.info(f"{url} is a {url_type}")
+    logger.info(f"{url} is a {url_type}")
     if url_type == UrlType.UNKNOWN:
         raise HTTPException(status_code=400, detail="Unknown URL")
     elif url_type == UrlType.EMPTY:
@@ -697,13 +687,11 @@ async def play(url: str, loop: bool = False, repeat: bool = False, resolution: i
                 in_cache = True
                 # Check if every video in the playlist is cached
                 for video_url in playlist_for_cache_check:
-                    video_path = video_cache.find(Cache.get_video_id(video_url))
-                    if video_path is None:
+                    video_path = video_cache.find(video_url))                    if video_path is None:
                         in_cache = False
                         break
         elif url_type == UrlType.VIDEO:
-            cached_video_path = video_cache.find(Cache.get_video_id(url))
-            in_cache = cached_video_path is not None
+            cached_video_path = video_cache.find(url))            in_cache = cached_video_path is not None
         return {"detail": "Success", "in_cache": in_cache}
 
     # If download is unsuccessful, give response and reason
@@ -716,7 +704,7 @@ async def play(url: str, loop: bool = False, repeat: bool = False, resolution: i
     except pytubefix.exceptions.VideoUnavailable:
         raise HTTPException(status_code=404, detail="This video is unavailable :(")
     except Exception:
-        logging.exception('unable to play video from url')
+        logger.exception('unable to play video from url')
         raise HTTPException(status_code=500, detail="check logs")
 
 
@@ -727,7 +715,7 @@ async def delete_file(request: Request):
         video_cache.delete(data['id'])
         return {"detail": "Success"}
     except Exception:
-        logging.exception('unable to delete file from cache')
+        logger.exception('unable to delete file from cache')
         raise HTTPException(status_code=500, detail="check logs")
 
 
@@ -737,7 +725,7 @@ def metadata(url: str):
     try:
         url_type = _get_url_type(url)
         if url_type == UrlType.UNKNOWN:
-            logging.error(f"unable to determine url type from {url}")
+            logger.error(f"unable to determine url type from {url}")
             raise HTTPException(status_code=400, detail="given url is of unknown type")
 
         # Check if the given url is a valid video or playlist
@@ -759,7 +747,7 @@ def metadata(url: str):
     except pytubefix.exceptions.VideoUnavailable:
         raise HTTPException(status_code=404, detail="This video is unavailable :(")
     except Exception:
-        logging.exception(f"unable to get metadata for url {url}")
+        logger.exception(f"unable to get metadata for url {url}")
         raise HTTPException(status_code=500, detail="Check logs")
 
 
@@ -892,7 +880,7 @@ if __name__ == "server":
 
     # if the cache file is specified, populate the cache from the file
     if args.cache_state_file:
-        video_cache.populate_cache()
+        video_cache.populate()
 
 
 if __name__ == "__main__":

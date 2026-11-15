@@ -1,173 +1,167 @@
 from collections import OrderedDict
-from dataclasses import dataclass
-from datetime import datetime, timezone
-import logging
-import os
-import uuid
+import datetime
 import json
+import os
+import typing
 
-from pytubefix import YouTube
-
+from modules.common import synchronized
+from modules.logger import logger
+from modules import disk_helpers
+from modules import youtube_helpers
 from modules.metrics import MetricsHandler
-from urllib.parse import urlparse, parse_qs
-
-
-@dataclass
-class VideoInfo:
-    file_path: str
-    thumbnail: str
-    title: str
-    size_bytes: int
-    date_added: str
-
-    def __str__(self):
-        return f"VideoInfo(video_id={self.video_id}, file_path={self.file_path}, size_bytes={self.size_bytes})"
+from modules.cache_entry import CacheEntry
 
 
 class Cache:
+    """
+    Meant to "Cache" downloaded files from YouTube on a machine's disk. Instead
+    of downloading a video everytime the server recieves a URL/Playlist, we check
+    if the given URL has a mapping to a file location on the disk. Recently
+    downloaded files will be kept on disk with the mapping of URLs to file paths
+    stored in memory.
+    """
+
+    # 2GB default cache size
     def __init__(
-        self,
-        file_path: str,
-        cache_file: str = None,
-        max_size_bytes: int = 2_000_000_000,
-    ) -> None:
-        self.file_path = file_path
+            self,
+            download_file_location,
+            max_size_bytes=2_000_000_000,
+            cache_state_file_path=None,
+        ) -> None:
+        # https://www.geeksforgeeks.org/lru-cache-in-python-using-ordereddict/
+        self._download_file_location = download_file_location
         self.max_size_bytes = max_size_bytes
         self.current_size_bytes = 0
-        self.cache_file = cache_file
-        self.video_id_to_path = OrderedDict()
+        self.mapping = OrderedDict()
+        self.cache_state_file_path = cache_state_file_path
+    
+    def populate(self):
+        if self.cache_state_file_path is not None:
+            try:
+                with open(self.cache_state_file_path, 'r') as f:
+                    mapping = json.load(f)
+                    for key, entry in mapping.items():
+                        if not os.path.exists(entry["file_path"]):
+                            logger.debug(f'not recovering {entry["file_path"]} because the file wasnt found')
+                            continue
+                        self.mapping[key] = CacheEntry(
+                            entry["file_path"],
+                            entry["size_bytes"],
+                            entry["title"],
+                            entry["thumbnail"],
+                            entry["last_used"],
+                        )
+                        self.current_size_bytes += int(entry["size_bytes"])
+                    logger.info(f"recovered {len(mapping.items())} items from cache file {self.cache_state_file_path}")
+            except Exception:
+                logger.exception(f"unable to recover cache from file {self.cache_state_file_path}")
+                self.mapping = OrderedDict()
 
-    def add(self, url: str):
-        video = YouTube(url)
-        # Download video of set resolution
-        video = (
-            video.streams.filter(
-                resolution="360p",
-                progressive=True,
-            )
-            .order_by("resolution")
-            .desc()
-            .first()
+        MetricsHandler.cache_entries.set(len(self.mapping))
+        MetricsHandler.cache_size_bytes.set(self.current_size_bytes)
+
+    
+    def list_entries(self) -> typing.List[typing.Dict[str, typing.Any]]:
+        result = []
+        for video_id, value in self.mapping.items():
+            result.append({
+                    "id": video_id,
+                    "name": value.title,
+                    "path": value.file_path,
+                    "thumbnail": value.thumbnail,
+                    "size_bytes": value.size_bytes,
+                    "last_used":  value.last_used,
+                })
+        return result
+
+    @synchronized
+    def find(self, url) -> CacheEntry | None:
+        video_id = youtube_helpers.extract_video_id_from_url(url)
+        maybe_entry = self.mapping.get(video_id)
+        if maybe_entry == None:
+            MetricsHandler.cache_misses.inc()
+            return None
+        MetricsHandler.cache_hits.inc()
+        self.mapping.move_to_end(video_id)
+        self.mapping[video_id].last_used = datetime.datetime.now(
+            tz=datetime.timezone.utc
         )
-        if video.filesize > self.max_size_bytes:
-            logging.info(
-                f"Video size ({video.filesize} bytes) exceeds max cache size ({self.max_size_bytes} bytes). Caching cancelled."
+        return maybe_entry
+
+    def _downsize_cache_to_target_bytes(self, target):
+        logger.info(f"downsizing cache to {target} bytes")
+        while self.current_size_bytes > target:
+            if len(self.mapping) == 0:
+                logger.error(
+                    f"for some reason the cache size is 0 but {self.current_size_bytes} > {target}"
+                )
+                break
+            _, entry = self.mapping.popitem(last=False)
+            MetricsHandler.cache_entries.dec()
+            disk_helpers.maybe_delete_file_from_disk(entry.file_path)
+            self.current_size_bytes -= entry.size_bytes
+            MetricsHandler.cache_size_bytes.set(self.current_size_bytes)
+    
+    @synchronized
+    def delete(self, videoId) -> bool:
+        if videoId not in self.mapping:
+            logger.info(f"video id {videoId} not found in mapping, skipping deletion")
+            return False
+        entry = self.mapping.pop(videoId)
+        MetricsHandler.cache_entries.dec()
+        disk_helpers.maybe_delete_file_from_disk(entry.file_path)
+        self.current_size_bytes -= entry.size_bytes
+        MetricsHandler.cache_size_bytes.set(self.current_size_bytes)
+        logger.info(f"removed video id {videoId} from cache")
+        return True
+
+    @synchronized
+    def add(self, url) -> CacheEntry | None:
+        video_id = youtube_helpers.extract_video_id_from_url(url)
+        cache_already_has_url = video_id in self.mapping
+        if cache_already_has_url:
+            logger.debug(
+                f"attempted to store {url} in cache but it already exists with key {video_id}"
+            )
+            return self.mapping.get(video_id).file_path
+
+        video_size_bytes = youtube_helpers.get_video_size_bytes(url)
+        if video_size_bytes > self.max_size_bytes:
+            logger.error(
+                f"{url} has size {video_size_bytes}, exceeds max cache size of {self.max_size_bytes} bytes"
             )
             return None
-        if self.current_size_bytes + video.filesize > self.max_size_bytes:
-            target_bytes = self.max_size_bytes - video.filesize
-            self._downsize_cache_to_target_bytes(target_bytes)
-            MetricsHandler.cache_size.set(len(self.video_id_to_path))
-            MetricsHandler.cache_size_bytes.set(self.current_size_bytes)
-        video_file_name = str(uuid.uuid4()) + ".mp4"
-        with MetricsHandler.download_time.time():
-            video.download(self.file_path, filename=video_file_name)
-        MetricsHandler.data_downloaded.inc(video.filesize)
-        MetricsHandler.video_download_count.inc()
-        video_id = self.get_video_id(url)
-        video_file_path = os.path.join(self.file_path, video_file_name)
-        logging.info(f"downloaded {url} to path {video_file_path}")
-        video_info = VideoInfo(
-            file_path=video_file_path,
-            thumbnail=YouTube(url).thumbnail_url,
-            title=YouTube(url).title,
-            size_bytes=video.filesize,
-            date_added=datetime.now(timezone.utc).isoformat(),
-        )
-        self.video_id_to_path[video_id] = video_info
-        self.current_size_bytes += video_info.size_bytes
-        MetricsHandler.cache_size.set(len(self.video_id_to_path))
+        elif video_size_bytes == False:
+            logger.error(f"unable to calculate bytes size of {url}")
+            return None
+
+        maybe_path = youtube_helpers.download_video_from_youtube(url, self._download_file_location)
+        if not maybe_path:
+            return None
+
+        size_bytes = maybe_path.size_bytes
+        if size_bytes + self.current_size_bytes > self.max_size_bytes:
+            target = self.current_size_bytes - size_bytes
+            self._downsize_cache_to_target_bytes(target)
+
+        self.current_size_bytes += size_bytes
         MetricsHandler.cache_size_bytes.set(self.current_size_bytes)
-        if self.cache_file:
-            self.write_cache()
+        self.mapping[video_id] = maybe_path
+        self.mapping.move_to_end(video_id)
+        MetricsHandler.cache_entries.inc()
+        logger.debug(f"creating mapping of {video_id} to {maybe_path.file_path}")
+        return self.mapping[video_id]
 
-    def find(self, video_id: str):
-        if video_id in self.video_id_to_path:
-            self.video_id_to_path.move_to_end(video_id)
-            MetricsHandler.cache_hit_count.inc()
-            return self.video_id_to_path[video_id].file_path
-        MetricsHandler.cache_miss_count.inc()
-        return None
-
-    def _downsize_cache_to_target_bytes(self, target_bytes: int):
-        logging.info(
-            f"current size {self.current_size_bytes}, downsizing to {target_bytes}"
-        )
-        while self.current_size_bytes > target_bytes:
-            removed_video_info = self.video_id_to_path.popitem(last=False)[1]
-            self.current_size_bytes -= removed_video_info.size_bytes
-            os.remove(removed_video_info.file_path)
-        if self.cache_file:
-            self.write_cache()
-    
-    def delete(self, id: str):
-        removed_video_info = self.video_id_to_path.pop(id)
-        self.write_cache()
-        self.current_size_bytes -= removed_video_info.size_bytes
-        os.remove(removed_video_info.file_path)
-        MetricsHandler.cache_size.set(len(self.video_id_to_path))
-        MetricsHandler.cache_size_bytes.set(self.current_size_bytes)
-
+    @synchronized
     def clear(self):
-        self._downsize_cache_to_target_bytes(0)
-
-    def populate_cache(self):
-        try:
-            # open the file and read the data
-            with open(self.cache_file, "r") as f:
-
-                # json.load converts the json data into python dictionary
-                dict_data = json.load(f)
-
-            # populate the cache
-            for video_key, video_info in dict_data.items():
-                if not os.path.exists(video_info["file_path"]):
-                    logging.info(f"{video_info['file_path']} was not found on disk")
-                    continue
-                self.video_id_to_path[video_key] = VideoInfo(
-                    file_path=video_info["file_path"],
-                    thumbnail=video_info["thumbnail"],
-                    title=video_info["title"],
-                    size_bytes=video_info["size_bytes"],
-                    date_added=video_info.get("date_added", ""),
-                )
-                self.current_size_bytes += video_info["size_bytes"]
-                MetricsHandler.cache_size.set(len(self.video_id_to_path))
-                MetricsHandler.cache_size_bytes.set(self.current_size_bytes)
-            logging.info(
-                f"Read {len(self.video_id_to_path)} items from cache file {self.cache_file}"
-            )
-        except Exception:
-            logging.exception(f"unable to read cache data from {self.cache_file}")
-
-    def write_cache(self):
-        try:
-            # cache state
-            cache_state = {}
-            for video_id, video_info in self.video_id_to_path.items():
-                cache_state[video_id] = {
-                    "file_path": video_info.file_path,
-                    "thumbnail": video_info.thumbnail,
-                    "title": video_info.title,
-                    "size_bytes": video_info.size_bytes,
-                    "date_added": video_info.date_added,
-                }
-
-            # serializing json
-            json_data = json.dumps(cache_state, indent=4)
-
-            # open the file and write the data
-            with open(self.cache_file, "w") as f:
-                f.write(json_data)
-
-            logging.info(
-                f"Wrote {len(cache_state)} items to cache file {self.cache_file}"
-            )
-        except Exception:
-            logging.exception(f"unable to write cache data to {self.cache_file}")
-
-    @staticmethod
-    def get_video_id(url) -> str:
-        parsed_url = urlparse(url)
-        video_id = parse_qs(parsed_url.query)["v"][0]
-        return video_id
+        if self.cache_state_file_path is None:
+            self._downsize_cache_to_target_bytes(0)
+            return
+        
+        logger.info(f"persisting cache to {self.cache_state_file_path}")
+        json_encoded_dict = {}
+        # stupid hack to convert the CacheEntry class to a dict
+        for key, value in self.mapping.items():
+            json_encoded_dict[key] = value.to_dict()
+        with open(self.cache_state_file_path, 'w') as f:
+            f.write(json.dumps(json_encoded_dict))
